@@ -2,8 +2,8 @@
 # Pins reflect the environment this run was executed and validated in.
 # The llama.cpp GGUF converter has its own (newer) requirements; run it in a
 # separate env or accept that transformers>=4.51 also converts Qwen3 cleanly.
-torch==2.5.1
-transformers==4.56.2
+torch==2.13.0
+transformers==5.5.0
 peft==0.19.1
 safetensors>=0.4
 accelerate>=0.30
