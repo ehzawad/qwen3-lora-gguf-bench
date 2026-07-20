@@ -1,0 +1,29 @@
+qwen3-lora-gguf-bench
+Copyright 2026 ehzawad
+
+This repository contains original experiment automation and benchmark results.
+Third-party model weights and build products are fetched or generated locally
+and are not distributed as part of this repository.
+
+Base model:
+  Qwen/Qwen3-4B-Instruct-2507
+  Revision: cdbee75f17c01a7cc42f958dc650907174af0554
+  License declared by upstream: Apache-2.0
+  Copyright notice in upstream LICENSE: Copyright 2024 Alibaba Cloud
+
+LoRA adapter:
+  narcolepticchicken/qwen3-4b-legal-ops-contract-intake-lora
+  Download revision: 8e5c6a9d99c9079fb775f2df5957d57a619659f9
+  Weight-origin revision: 9b977f670ff6b0f26a3b702d3805521044276841
+  Weight SHA-256: 4848bae64fa74ba689c5300730aaed0f339d850589f08f59af4fe59808c15763
+  Author/attribution: narcolepticchicken
+  License declared in the pinned model-card metadata: Apache-2.0
+  The adapter repository does not include a standalone LICENSE file.
+
+Inference engine:
+  ggml-org/llama.cpp
+  Revision: 91d2fc387529940230555abd297a8b5e99737d3f
+  Upstream license: MIT
+
+No affiliation with or endorsement by the upstream authors is implied.
+The legal-operations adapter is not legal advice.

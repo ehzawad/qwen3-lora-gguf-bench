@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Block any push that contains a Co-authored-by trailer or a non-ehzawad
+# author/committer. Enforces the "no AI / no extra co-author" policy.
+set -euo pipefail
+
+range="HEAD"
+if git show-ref --verify --quiet refs/remotes/origin/main; then
+  range="origin/main..HEAD"
+fi
+
+# 1. No Co-authored-by trailers of any kind.
+if git log "$range" --format='%B' | grep -niE '^[[:space:]]*Co-authored-by:'; then
+  echo "pre-push: ERROR - Co-authored-by trailer present" >&2
+  exit 1
+fi
+
+# 2. No AI-assistant trailers/markers.
+if git log "$range" --format='%B' | grep -niE 'claude|anthropic|codex|openai|chatgpt|generated with'; then
+  echo "pre-push: ERROR - AI-assistant marker present in commit message" >&2
+  exit 1
+fi
+
+# 3. Author and committer must be ehzawad.
+bad=$(git log "$range" --format='%an|%cn' | grep -viE '^ehzawad\|ehzawad$' || true)
+if [ -n "$bad" ]; then
+  echo "pre-push: ERROR - non-ehzawad author/committer found:" >&2
+  echo "$bad" >&2
+  exit 1
+fi
+
+echo "pre-push: identity + trailer checks passed"

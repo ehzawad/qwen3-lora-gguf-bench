@@ -1,0 +1,2 @@
+a623d844cbeb0d6f68592f8266a18345184e2b60a16a8d38055462d32e4b626f  /mnt/sdb/arafat/ehz/llm/qwen3-lora-gguf-bench/models/gguf/qwen3-4b-legal-ops-bf16.gguf
+d02231c0f17aedddfb3d1eb1ef22373157ec61cc32b54a54889a797e0da4a4ac  /mnt/sdb/arafat/ehz/llm/qwen3-lora-gguf-bench/models/gguf/qwen3-4b-legal-ops-Q6_K.gguf

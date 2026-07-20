@@ -1,0 +1,56 @@
+# Downloaded and generated model artifacts
+/models/
+/artifacts/
+
+# Pulled source and build products
+/vendor/
+/build/
+
+# Runtime state and unsanitized logs
+/logs/
+/run/
+/tmp/
+/cache/
+**/.cache/
+
+# Virtual environments and Python caches
+/.venv*/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Model weights and large binary formats: defense in depth
+*.safetensors
+*.gguf
+*.gguf.*
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.tflite
+
+# Compiled binaries/libraries
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Secrets and local overrides
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editor/OS noise
+.DS_Store
+.vscode/
+.idea/
+results/current_run.txt
+
+# Verbose per-slot server logs (the startup line is captured in benchmark-c0NN.json)
+results/**/server-*.log

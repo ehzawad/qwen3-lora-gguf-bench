@@ -1,0 +1,53 @@
+[
+  {
+    "concurrency": 1,
+    "output_tokens_per_min": 7346.283157041839,
+    "output_tokens_per_s": 122.438052617364,
+    "ttft_p50_s": 0.07071772997733206,
+    "ttft_p95_s": 0.07541365997167304,
+    "latency_p50_s": 2.0941990859573707,
+    "latency_p95_s": 2.1220671010087244,
+    "gpu_util_median_pct": 94.0,
+    "mem_ctrl_util_median_pct_proxy": 74.0,
+    "power_median_w": 229.05,
+    "sm_clock_median_mhz": 1552.5,
+    "vram_peak_mib": 3590.0,
+    "requests_ok": 20,
+    "requests_failed": 0,
+    "server_predicted_tokens_delta": 5120.0
+  },
+  {
+    "concurrency": 30,
+    "output_tokens_per_min": 43229.80565836523,
+    "output_tokens_per_s": 720.4967609727538,
+    "ttft_p50_s": 0.8962476279702969,
+    "ttft_p95_s": 0.9585811009746976,
+    "latency_p50_s": 10.508166405954398,
+    "latency_p95_s": 11.342621094023343,
+    "gpu_util_median_pct": 51.0,
+    "mem_ctrl_util_median_pct_proxy": 32.0,
+    "power_median_w": 194.14,
+    "sm_clock_median_mhz": 1800.0,
+    "vram_peak_mib": 6744.0,
+    "requests_ok": 600,
+    "requests_failed": 0,
+    "server_predicted_tokens_delta": 153600.0
+  },
+  {
+    "concurrency": 100,
+    "output_tokens_per_min": 45926.67326700825,
+    "output_tokens_per_s": 765.4445544501375,
+    "ttft_p50_s": 0.6467388239689171,
+    "ttft_p95_s": 1.1362969090114348,
+    "latency_p50_s": 33.26435689104255,
+    "latency_p95_s": 34.538135376002174,
+    "gpu_util_median_pct": 41.0,
+    "mem_ctrl_util_median_pct_proxy": 24.0,
+    "power_median_w": 157.15,
+    "sm_clock_median_mhz": 1755.0,
+    "vram_peak_mib": 14550.0,
+    "requests_ok": 2000,
+    "requests_failed": 0,
+    "server_predicted_tokens_delta": 512000.0
+  }
+]

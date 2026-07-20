@@ -1,0 +1,56 @@
+{
+  "experiment": "qwen3-4b lora -> merge -> gguf -> Q6_K -> llama.cpp concurrency benchmark",
+  "base": {
+    "repo": "Qwen/Qwen3-4B-Instruct-2507",
+    "revision": "cdbee75f17c01a7cc42f958dc650907174af0554"
+  },
+  "adapter": {
+    "repo": "narcolepticchicken/qwen3-4b-legal-ops-contract-intake-lora",
+    "revision": "8e5c6a9d99c9079fb775f2df5957d57a619659f9",
+    "weight_origin_revision": "9b977f670ff6b0f26a3b702d3805521044276841",
+    "weight_sha256": "4848bae64fa74ba689c5300730aaed0f339d850589f08f59af4fe59808c15763",
+    "r": 16, "lora_alpha": 32, "lora_dropout": 0.05,
+    "target_modules": ["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj"]
+  },
+  "llama_cpp": {
+    "repo": "https://github.com/ggml-org/llama.cpp",
+    "revision": "91d2fc387529940230555abd297a8b5e99737d3f",
+    "cmake_flags": [
+      "-DGGML_CUDA=ON",
+      "-DCMAKE_CUDA_ARCHITECTURES=86",
+      "-DGGML_NATIVE=OFF",
+      "-DLLAMA_CURL=OFF",
+      "-DLLAMA_BUILD_UI=OFF",
+      "-DLLAMA_BUILD_TESTS=OFF",
+      "-DCMAKE_BUILD_TYPE=Release"
+    ]
+  },
+  "quant": { "intermediate_gguf": "bf16", "final": "Q6_K" },
+  "benchmark": {
+    "profile": "short-chat",
+    "prompt_tokens_target": 256,
+    "max_tokens": 256,
+    "ignore_eos": true,
+    "temperature": 0.0,
+    "seed": 12345,
+    "per_slot_ctx_tokens": 768,
+    "kv_cache": "f16/f16",
+    "concurrency_points": [1, 30, 100],
+    "warmup_per_worker": 2,
+    "measured_per_worker": 20,
+    "arrival": "closed-loop, barrier-synchronized",
+    "throughput_metric": "60 * sum(completion_tokens) / makespan (single wall clock)"
+  },
+  "hardware_reference": {
+    "gpu": "NVIDIA RTX A5000",
+    "vram_mib": 24564,
+    "arch": "Ampere GA102 (compute capability 8.6)",
+    "mem_bandwidth_gbps_approx": 768,
+    "power_limit_w": 230,
+    "driver_cuda_umd": "13.3",
+    "nvcc": "13.2",
+    "host_cpu": "2x Intel Xeon Silver 4210R (40 threads)",
+    "host_ram_gib": 125,
+    "pcie": "Gen3 x16"
+  }
+}

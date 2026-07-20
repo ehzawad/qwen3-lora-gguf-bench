@@ -1,0 +1,85 @@
+{
+  "bench_version": "1.0",
+  "tag": "c001",
+  "concurrency": 1,
+  "ctx_size": 768,
+  "ctx_per_slot": 768,
+  "warmup_per_worker": 2,
+  "measured_per_worker": 20,
+  "requests_ok": 20,
+  "requests_failed": 0,
+  "completion_tokens_total": 5120,
+  "prompt_tokens_example": 235,
+  "makespan_s": 41.817064961011056,
+  "wall_phase_s": 41.81776687398087,
+  "output_tokens_per_s": 122.438052617364,
+  "output_tokens_per_min": 7346.283157041839,
+  "server_predicted_tokens_delta": 5120.0,
+  "ttft_s": {
+    "p50": 0.07071772997733206,
+    "p90": 0.07497881498420611,
+    "p95": 0.07541365997167304,
+    "p99": 0.07541365997167304,
+    "max": 0.07541365997167304,
+    "mean": 0.07060148704622407
+  },
+  "latency_s": {
+    "p50": 2.0941990859573707,
+    "p90": 2.119990578969009,
+    "p95": 2.1220671010087244,
+    "p99": 2.1220671010087244,
+    "max": 2.1220671010087244,
+    "mean": 2.090736006546649
+  },
+  "server_props": {
+    "total_slots": 1,
+    "n_ctx": 768
+  },
+  "server_startup_line": "0.01.815.565 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 768, kv_unified = 'false'",
+  "telemetry": {
+    "gpu_util_pct": {
+      "median": 94.0,
+      "p95": 95.0,
+      "peak": 95.0,
+      "min": 0.0,
+      "samples": 44
+    },
+    "mem_controller_util_pct_proxy": {
+      "median": 74.0,
+      "p95": 75.0,
+      "peak": 75.0,
+      "min": 0.0,
+      "samples": 44
+    },
+    "power_w": {
+      "median": 229.05,
+      "p95": 231.87,
+      "peak": 233.29,
+      "min": 79.04,
+      "samples": 44
+    },
+    "sm_clock_mhz": {
+      "median": 1552.5,
+      "p95": 1575.0,
+      "peak": 1905.0,
+      "min": 1500.0,
+      "samples": 44
+    },
+    "mem_used_mib": {
+      "median": 3590.0,
+      "p95": 3590.0,
+      "peak": 3590.0,
+      "min": 3590.0,
+      "samples": 44
+    },
+    "temperature_c": {
+      "median": 59.5,
+      "p95": 68.0,
+      "peak": 69.0,
+      "min": 39.0,
+      "samples": 44
+    }
+  },
+  "failures_sample": [],
+  "ok": true
+}

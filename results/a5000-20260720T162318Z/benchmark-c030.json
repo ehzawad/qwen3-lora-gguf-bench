@@ -1,0 +1,85 @@
+{
+  "bench_version": "1.0",
+  "tag": "c030",
+  "concurrency": 30,
+  "ctx_size": 23040,
+  "ctx_per_slot": 768,
+  "warmup_per_worker": 2,
+  "measured_per_worker": 20,
+  "requests_ok": 600,
+  "requests_failed": 0,
+  "completion_tokens_total": 153600,
+  "prompt_tokens_example": 240,
+  "makespan_s": 213.18624637898756,
+  "wall_phase_s": 213.19716785498895,
+  "output_tokens_per_s": 720.4967609727538,
+  "output_tokens_per_min": 43229.80565836523,
+  "server_predicted_tokens_delta": 153600.0,
+  "ttft_s": {
+    "p50": 0.8962476279702969,
+    "p90": 0.9468413770082407,
+    "p95": 0.9585811009746976,
+    "p99": 1.5611892099841498,
+    "max": 1.7978846280020662,
+    "mean": 0.7611802546321996
+  },
+  "latency_s": {
+    "p50": 10.508166405954398,
+    "p90": 11.30061240302166,
+    "p95": 11.342621094023343,
+    "p99": 11.37772100494476,
+    "max": 11.476674549980089,
+    "mean": 10.65461144915549
+  },
+  "server_props": {
+    "total_slots": 30,
+    "n_ctx": 768
+  },
+  "server_startup_line": "0.01.774.436 I srv    load_model: initializing, n_slots = 30, n_ctx_slot = 768, kv_unified = 'false'",
+  "telemetry": {
+    "gpu_util_pct": {
+      "median": 51.0,
+      "p95": 99.0,
+      "peak": 100.0,
+      "min": 0.0,
+      "samples": 215
+    },
+    "mem_controller_util_pct_proxy": {
+      "median": 32.0,
+      "p95": 40.0,
+      "peak": 46.0,
+      "min": 0.0,
+      "samples": 215
+    },
+    "power_w": {
+      "median": 194.14,
+      "p95": 228.26,
+      "peak": 247.61,
+      "min": 78.23,
+      "samples": 215
+    },
+    "sm_clock_mhz": {
+      "median": 1800.0,
+      "p95": 1845.0,
+      "peak": 1860.0,
+      "min": 1470.0,
+      "samples": 215
+    },
+    "mem_used_mib": {
+      "median": 6730.0,
+      "p95": 6744.0,
+      "peak": 6744.0,
+      "min": 6730.0,
+      "samples": 215
+    },
+    "temperature_c": {
+      "median": 76.0,
+      "p95": 77.0,
+      "peak": 78.0,
+      "min": 62.0,
+      "samples": 215
+    }
+  },
+  "failures_sample": [],
+  "ok": true
+}
