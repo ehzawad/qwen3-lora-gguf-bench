@@ -1,0 +1,18 @@
+vLLM engine-comparison FAILURE NOTE (E5)
+
+vLLM 0.25.1 could not serve this model in this environment. It loaded the merged
+Qwen3-4B (bf16, ~7.64 GiB) and sized its KV cache, then EngineCore died during
+kernel_warmup with a Triton JIT source-parse bug:
+
+  AttributeError: 'NoneType' object has no attribute 'start'
+  at triton/runtime/jit.py:469  ->  re.search(r"^def\s+\w+\s*\(", src, MULTILINE).start()
+
+triggered via an unrelated sparse-attention (minimax) Triton kernel import at
+warmup. The crash persisted with --enforce-eager. 0 requests were served; the
+server never listened; no benchmark-vllm-*.json exists.
+
+Environment: isolated venv (.venv-vllm), Python 3.10.6, vLLM 0.25.1.
+Consequence: the llama.cpp-vs-vLLM comparison is VOID. No engine winner, ratio,
+or latency delta between engines can be stated from this run. The llama.cpp side
+(benchmark-llamacpp-c{001,030,100}.json) is complete and valid.
+The full crash traceback was in server-vllm.log (gitignored per repo policy).

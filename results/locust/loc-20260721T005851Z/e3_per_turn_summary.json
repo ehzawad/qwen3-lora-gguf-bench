@@ -1,0 +1,61 @@
+{
+  "note": "E3 ConversationUser per-turn end-to-end latency (client-side, Locust). Derived from convo-u20_stats.csv. Server-side prefill timings are in the (gitignored) server-e3.log; the per-turn prefill-token growth is described qualitatively in the report.",
+  "turns": [
+    {
+      "turn": "convo-turn-1",
+      "requests": 66,
+      "median_ms": 9600,
+      "p95_ms": 12000,
+      "avg_ms": 8162.5
+    },
+    {
+      "turn": "convo-turn-2",
+      "requests": 64,
+      "median_ms": 9400,
+      "p95_ms": 11000,
+      "avg_ms": 8598.7
+    },
+    {
+      "turn": "convo-turn-3",
+      "requests": 63,
+      "median_ms": 9700,
+      "p95_ms": 11000,
+      "avg_ms": 8504.8
+    },
+    {
+      "turn": "convo-turn-4",
+      "requests": 60,
+      "median_ms": 10000,
+      "p95_ms": 12000,
+      "avg_ms": 9378.0
+    },
+    {
+      "turn": "convo-turn-5",
+      "requests": 60,
+      "median_ms": 10000,
+      "p95_ms": 12000,
+      "avg_ms": 9090.6
+    },
+    {
+      "turn": "convo-turn-6",
+      "requests": 58,
+      "median_ms": 10000,
+      "p95_ms": 12000,
+      "avg_ms": 8961.5
+    },
+    {
+      "turn": "convo-turn-7",
+      "requests": 54,
+      "median_ms": 11000,
+      "p95_ms": 12000,
+      "avg_ms": 9185.5
+    },
+    {
+      "turn": "convo-turn-8",
+      "requests": 48,
+      "median_ms": 9800,
+      "p95_ms": 12000,
+      "avg_ms": 8197.5
+    }
+  ]
+}

@@ -177,12 +177,12 @@
       <h3>The per-user view collapses the whole way up</h3>
       <p>Fair-share throughput (aggregate ÷ C) falls from the first step: 118 → 12.5 at the peak → <b>5.9 tok/s at C=128</b> (a 20× degradation). Because each request emits a fixed 256 tokens, latency is just its inverse: p50 climbs <b>2.2 s → 43.6 s</b>. At the throughput peak, each user already waits ~20 s. <b>"Max throughput" and "good latency" are different operating points.</b></p>
       <h3>What actually breaks first: the bottleneck leaves the GPU</h3>
-      <p>This is the counterintuitive core. As C rises, the <b>GPU does less</b> (util median 94%→41%, power 229&nbsp;W→~168&nbsp;W) while the <b>llama-server process CPU rises ~11×</b> (2.5%→29%). The GPU isn't idle — it's <em>bursty/starved</em>: p95 util pins at 99% while the median sits at 40%, because it waits between CPU-scheduled batches.</p>
+      <p>This is the counterintuitive core. As C rises, the <b>GPU does less</b> (util median 94%→41%, power 229&nbsp;W→168&nbsp;W) while the <b>llama-server process CPU rises ~11×</b> (2.5%→29%). The GPU isn't idle — it's <em>bursty/starved</em>: p95 util pins at 99% while the median sits at ~40%, a distribution consistent with gaps between batches. The evidence <b>most strongly points to</b> a host-side feed/orchestration bottleneck (CPU-scheduling overhead the leading candidate); we did not profile to isolate the exact mechanism.</p>
     </div>
 
     <figure class="chart reveal">
       <h4>The crossover: GPU falls, host CPU rises</h4>
-      <p class="sub">The limiter moves off the GPU and onto host-side scheduling — which is why throughput peaks and then declines.</p>
+      <p class="sub">The limiter moves off the GPU toward host-side feed/orchestration (leading candidate: CPU scheduling — not isolated) — consistent with throughput peaking then declining.</p>
       <div id="c-crossover"></div>
       <div class="legend"><span><i style="background:var(--gpu)"></i>GPU util median (%)</span><span><i style="background:var(--cpu)"></i>llama-server process CPU (%)</span></div>
     </figure>
@@ -211,7 +211,7 @@
         </tbody>
       </table>
     </div>
-    <p class="col" style="font-size:15px;color:var(--muted)">Zero failures across 2,620 requests; the server's <code>tokens_predicted_total</code> matched the client exactly at every point. A repeat of C=32 agreed within 0.6%; an independent Work-A run (2× samples) landed on the same curve.</p>
+    <p class="col" style="font-size:15px;color:var(--muted)">Prompts average ~242 tokens (231–253); generation is exactly 256. The server's <code>tokens_predicted_total</code> matched the client exactly at every point. The sweep had a single transient failure (C=24, 1 of 240; throughput computed on the rest); the independent Work-A 1/30/100 run had 0 failures across 2,620 requests. A C=32 repeat agreed within 0.6%.</p>
   </section>
 
   <section>
@@ -235,7 +235,7 @@
   <section>
     <div class="sec-head"><span class="idx">§3</span><h2>Engine choice — and why this comparison is <span style="color:var(--bad)">void</span></h2></div>
     <div class="callout void"><span class="lab">Do not violate this</span><b>The llama.cpp-vs-vLLM comparison did not happen.</b> vLLM 0.25.1 loaded the model, then <code>EngineCore</code> died at <code>kernel_warmup</code> with a Triton JIT parse bug — <b>0 requests served</b>. No winner, ratio, or latency delta between engines can be stated; the hypothesis is untested, not refuted. And it wouldn't have been iso-precision anyway (llama.cpp Q6_K 6-bit vs vLLM bf16 16-bit).</div>
-    <div class="col"><p>The llama.cpp side did run cleanly on a fixed 100-slot server (below). It independently reproduces §1: sublinear scaling (6.4× for 100× clients), sharp tail-latency growth, and the same bursty/host-bound signature (GPU util 93%→41% while p95 pins at 99%). Note C=30 here is only <b>370 tok/s</b> — half of §1's dedicated-30-slot 720 — because over-provisioning to 100 slots when serving 30 clients hurts. Right-size your slot count.</p></div>
+    <div class="col"><p>The llama.cpp side did run cleanly on a fixed 100-slot server (below). It independently reproduces §1: sublinear scaling (6.4× for 100× clients), sharp tail-latency growth, and the same bursty/host-bound signature (GPU util 93%→41% while p95 pins at 99%). Note C=30 here is only <b>370 tok/s</b> — half of §1's dedicated-30-slot 720. This cross-run difference is real and consistent with over-provisioning overhead (99 idle slots at C=30), though the exact cause wasn't isolated — a reason to right-size slots to expected load.</p></div>
     <div class="tbl-scroll"><table>
       <caption>E5 — llama.cpp Q6_K, fixed 100-slot deployment (vLLM omitted; crashed).</caption>
       <thead><tr><th>Engine</th><th class="n">C</th><th class="n">tok/s</th><th class="n">TTFT p99 (s)</th><th class="n">Lat p50 (s)</th><th>Status</th></tr></thead>
@@ -274,7 +274,7 @@
   </section>
 
   <section>
-    <div class="sec-head"><span class="idx">§5</span><h2>Finite-user load (Locust) — closed-loop, labeled honestly</h2></div>
+    <div class="sec-head"><span class="idx">§5</span><h2>Synthetic finite-user load (Locust) — closed-loop, not real traffic</h2></div>
     <div class="col"><p>The nearest thing here to "real traffic": a finite pool of users with think-time between requests. Still <b>closed-loop</b> — user count is an <em>upper bound</em> on in-flight concurrency, and offered load is throttled by the pool, not pushed to saturation. <b>Never</b> compare these tok/s with the §1 saturation numbers; they measure different worlds.</p></div>
     <div class="tbl-scroll"><table>
       <caption>E2 short-chat (fixed 64 slots) and E3 multi-turn growing context (20 slots, 4096-tok).</caption>
@@ -289,7 +289,22 @@
   </section>
 
   <section>
-    <div class="sec-head"><span class="idx">§6</span><h2>When to use what</h2></div>
+    <div class="sec-head"><span class="idx">§6</span><h2>Nuances — what a real chatbot needs, and llama.cpp vs vLLM</h2></div>
+    <div class="col">
+      <p>Everything above measured raw serving capacity on <em>one</em> engine. A production chatbot cares about different things. This section is grounded in the 2025–2026 literature (cited), not our own measurement.</p>
+      <ul class="clean">
+        <li><b>Prefix caching is the #1 chatbot lever.</b> Real chats are multi-turn: the system prompt + history is a huge <em>shared prefix</em>, each new turn a tiny suffix. With prefix caching (automatic in <a href="https://vllm.ai/blog/2025-09-05-anatomy-of-vllm">vLLM</a>/SGLang) only the new turn is prefilled. Our <b>E3 deliberately disabled it</b> (<code>--no-cache-prompt</code>) — the worst case; multi-turn KV reuse cuts P99 TTFT up to <b>−69%</b> (<a href="https://arxiv.org/abs/2606.16135">SwiftCache</a>).</li>
+        <li><b>TTFT &amp; TPOT beat aggregate throughput for UX.</b> At our peak (C=64) aggregate tok/s is maximal but each user waits ~20 s. The production metric is <b>goodput</b> (requests meeting a latency SLO), not raw throughput.</li>
+        <li><b>llama.cpp vs vLLM — with a caveat on the scary numbers.</b> vLLM (PagedAttention + native continuous batching + prefix caching + speculative decoding) is built for many concurrent users; a <a href="https://developers.redhat.com/articles/2026/06/15/llamacpp-vs-vllm-choosing-right-local-llm-inference-engine">Red&nbsp;Hat test</a> cites ~44× tok/s and stable sub-second TTFT at 64 users vs a llama.cpp config whose TTFT exceeded 180 s. <b>But that gap is config-dependent:</b> our <em>properly-tuned</em> llama.cpp (<code>-cb</code>) had p99 TTFT ~7.5 s at C=128 — it still hit a host-bound wall (peak then decline), which is exactly what vLLM's scheduler is engineered to push past. Direction real; magnitude overstated for a well-tuned llama.cpp. We couldn't measure vLLM here (it crashed).</li>
+        <li><b>Speed ≠ accuracy — we measured only speed.</b> Q4_K_M decodes 2.18× BF16 but at a quality cost: literature puts Q6_K near-lossless, Q4_K_M ~92%, and on GPU engines <b>AWQ (~95%) &gt; GPTQ (~90%)</b> at 4-bit (<a href="https://ai.rs/ai-developer/quantization-methods-compared">ai.rs</a>). FP8 needs Ada/Hopper, not our A5000.</li>
+        <li><b>2025–26 levers that matter more than kernel speed:</b> speculative decoding, chunked prefill, prefix caching, and <a href="https://docs.vllm.ai/en/latest/features/disagg_prefill/">disaggregated prefill/decode</a> — mostly mature in vLLM/SGLang; llama.cpp has speculative decoding + slot prompt-cache, not the full suite.</li>
+      </ul>
+      <div class="callout"><b>Bottom line for a chatbot:</b> our numbers are the <b>floor</b> — one engine, no prefix cache, no speculative decoding. On the right engine with prefix caching on, a multi-turn chatbot has far lower TTFT under load and higher usable concurrency. <b>Production multi-user chatbot → vLLM/SGLang; single-user, edge, prototype, or CPU/mixed → llama.cpp.</b></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="idx">§7</span><h2>When to use what</h2></div>
     <div class="tbl-scroll"><table>
       <caption>Read the operating point off the data — match it to your goal, not to a peak number.</caption>
       <thead><tr><th>Goal</th><th>Do this</th><th>Because</th></tr></thead>
@@ -308,14 +323,16 @@
   </section>
 
   <section style="border-bottom:none">
-    <div class="sec-head"><span class="idx">§7</span><h2>Limitations you must carry with the numbers</h2></div>
+    <div class="sec-head"><span class="idx">§8</span><h2>Limitations you must carry with the numbers</h2></div>
     <div class="col"><ul class="clean">
       <li><b>One GPU, one build, one model.</b> A5000 24 GB, llama.cpp <code>91d2fc38</code>, Qwen3-4B Q6_K. The peak at 64, the 108 MiB/slot slope, the CPU crossover — all rig-specific; they don't transfer.</li>
       <li><b>Closed-loop ≠ open-loop.</b> §1 is a fully-backlogged saturation probe; Locust is finite-user think-time. Their tok/s are not comparable and neither is an open-loop Poisson-arrival SLO test.</li>
       <li><b><code>utilization.memory</code> is a proxy, not bandwidth (GB/s).</b> And GPU util <em>median</em> is misleading alone — reason from the median-vs-p95 gap (median 40% with p95 99% = bursty/starved).</li>
       <li><b>The engine comparison is void</b> — vLLM served 0 requests. Every E5 number is llama.cpp-only.</li>
       <li><b>The SVD study measures an inter-checkpoint delta</b>, "LoRA-representable" ≠ a validated adapter, and it refutes nothing about trained-LoRA quality. bf16 read-back also inflates the control's rank floors.</li>
-      <li><b>E4 is 3 samples/point</b> (first a cold outlier); "prefill is flat" is a within-noise statement, not a fine ordering.</li>
+      <li><b>E4 is 3 samples/point</b> (first a cold outlier); "prefill is flat" means no monotonic bit-width ordering — n=3 is too thin for a robust ranking.</li>
+      <li><b>We measured speed &amp; memory, not semantic quality.</b> No perplexity/task-accuracy study was run; all quality claims (§6 D) are from external literature. Validate quality on your task before choosing a lower-bit quant.</li>
+      <li><b>The host-bound diagnosis is an inference</b>, not an isolated cause — no profiler/CUDA trace/thread ablation was run. Manifests also record <code>source_dirty=true</code>; raw per-slot server logs are gitignored (derived evidence is committed).</li>
     </ul></div>
   </section>
 
