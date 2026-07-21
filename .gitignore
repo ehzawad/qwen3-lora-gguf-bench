@@ -54,3 +54,6 @@ results/current_run.txt
 
 # Verbose per-slot server logs (the startup line is captured in benchmark-c0NN.json)
 results/**/server-*.log
+
+# Locust auto-generated HTML reports (redundant with CSV/JSON)
+results/**/*.html

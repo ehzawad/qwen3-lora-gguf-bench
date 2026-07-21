@@ -1,0 +1,99 @@
+{
+  "bench_version": "1.1",
+  "tag": "c001",
+  "concurrency": 1,
+  "ctx_size": 768,
+  "ctx_per_slot": 768,
+  "warmup_per_worker": 2,
+  "measured_per_worker": 60,
+  "requests_ok": 60,
+  "requests_failed": 0,
+  "completion_tokens_total": 15360,
+  "prompt_tokens_example": 235,
+  "makespan_s": 129.71165066899266,
+  "wall_phase_s": 129.71274016599637,
+  "output_tokens_per_s": 118.41650245587215,
+  "output_tokens_per_min": 7104.990147352329,
+  "server_predicted_tokens_delta": 15360.0,
+  "ttft_s": {
+    "p50": 0.07303786603733897,
+    "p90": 0.07700208993628621,
+    "p95": 0.08138408907689154,
+    "p99": 0.0841754189459607,
+    "max": 0.0841754189459607,
+    "mean": 0.07318822754896245
+  },
+  "latency_s": {
+    "p50": 2.175273332046345,
+    "p90": 2.1947905470151454,
+    "p95": 2.197827986907214,
+    "p99": 2.19828824698925,
+    "max": 2.19828824698925,
+    "mean": 2.161730179534061
+  },
+  "server_props": {
+    "total_slots": 1,
+    "n_ctx": 768
+  },
+  "server_startup_line": "0.01.890.865 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 768, kv_unified = 'false'",
+  "vram_ready_mib": 3584,
+  "vram_idle_mib": 3590,
+  "telemetry": {
+    "gpu_util_pct": {
+      "median": 94.0,
+      "p95": 95.0,
+      "peak": 95.0,
+      "min": 0.0,
+      "samples": 132
+    },
+    "mem_controller_util_pct_proxy": {
+      "median": 71.0,
+      "p95": 74.0,
+      "peak": 75.0,
+      "min": 0.0,
+      "samples": 132
+    },
+    "power_w": {
+      "median": 228.575,
+      "p95": 233.97,
+      "peak": 241.76,
+      "min": 72.36,
+      "samples": 132
+    },
+    "sm_clock_mhz": {
+      "median": 1470.0,
+      "p95": 1560.0,
+      "peak": 1770.0,
+      "min": 1395.0,
+      "samples": 132
+    },
+    "mem_used_mib": {
+      "median": 3590.0,
+      "p95": 3590.0,
+      "peak": 3590.0,
+      "min": 3590.0,
+      "samples": 132
+    },
+    "temperature_c": {
+      "median": 77.0,
+      "p95": 80.0,
+      "peak": 80.0,
+      "min": 50.0,
+      "samples": 132
+    },
+    "cpu_system_pct": {
+      "median": 5.1,
+      "p95": 8.5,
+      "peak": 10.9,
+      "samples": 131
+    },
+    "cpu_server_proc_pct": {
+      "median": 2.5475000000000003,
+      "p95": 2.5725000000000002,
+      "peak": 2.5975,
+      "samples": 131
+    }
+  },
+  "failures_sample": [],
+  "ok": true
+}

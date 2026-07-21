@@ -1,0 +1,451 @@
+<title>LLM Inference on a Single RTX A5000 — A Field Guide</title>
+<style>
+  :root {
+    --ground: #f5f7fa; --panel: #ffffff; --panel-2: #eef1f6;
+    --ink: #171b24; --muted: #5a6474; --faint: #8b95a6;
+    --line: #dde3ec; --line-strong: #c4cdda;
+    --gpu: #17998a; --gpu-soft: #d3ece8;      /* teal = GPU / throughput */
+    --cpu: #c67e12; --cpu-soft: #f6e6c9;       /* amber = CPU / host */
+    --good: #2f8f5b; --bad: #c8443a; --warn: #c67e12;
+    --shadow: 0 1px 2px rgba(20,30,50,.06), 0 8px 30px rgba(20,30,50,.06);
+    --measure: 68ch;
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, "Cascadia Mono", Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --serif: Georgia, "Iowan Old Style", "Times New Roman", serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0b0e14; --panel: #12161f; --panel-2: #171c27;
+      --ink: #e6e9f0; --muted: #9aa4b6; --faint: #6b7688;
+      --line: #232a37; --line-strong: #313a4b;
+      --gpu: #2fc7b3; --gpu-soft: #123330; --cpu: #e8a83e; --cpu-soft: #33270f;
+      --good: #4cc383; --bad: #e5675c; --warn: #e8a83e;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 34px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #f5f7fa; --panel: #ffffff; --panel-2: #eef1f6;
+    --ink: #171b24; --muted: #5a6474; --faint: #8b95a6;
+    --line: #dde3ec; --line-strong: #c4cdda;
+    --gpu: #17998a; --gpu-soft: #d3ece8; --cpu: #c67e12; --cpu-soft: #f6e6c9;
+    --good: #2f8f5b; --bad: #c8443a; --warn: #c67e12;
+  }
+  :root[data-theme="dark"] {
+    --ground: #0b0e14; --panel: #12161f; --panel-2: #171c27;
+    --ink: #e6e9f0; --muted: #9aa4b6; --faint: #6b7688;
+    --line: #232a37; --line-strong: #313a4b;
+    --gpu: #2fc7b3; --gpu-soft: #123330; --cpu: #e8a83e; --cpu-soft: #33270f;
+    --good: #4cc383; --bad: #e5675c; --warn: #e8a83e;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--serif); font-size: 18px; line-height: 1.62;
+    -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+  .col { max-width: var(--measure); }
+  p, li { color: var(--ink); }
+  a { color: var(--gpu); text-underline-offset: 3px; }
+  h1, h2, h3 { font-family: var(--sans); line-height: 1.15; text-wrap: balance;
+    letter-spacing: -.015em; }
+  code, .mono, td.n, th.n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .eyebrow { font-family: var(--sans); text-transform: uppercase; letter-spacing: .14em;
+    font-size: 12px; font-weight: 650; color: var(--faint); }
+
+  /* ---- hero ---- */
+  header.hero { border-bottom: 1px solid var(--line); background:
+    radial-gradient(120% 140% at 100% -20%, var(--gpu-soft) 0%, transparent 55%),
+    radial-gradient(120% 140% at 0% -10%, var(--cpu-soft) 0%, transparent 50%); }
+  .hero-inner { padding: 66px 0 44px; }
+  h1 { font-size: clamp(30px, 5.2vw, 52px); font-weight: 780; margin: 14px 0 10px; }
+  .lede { font-size: clamp(18px, 2.2vw, 21px); color: var(--muted); max-width: 60ch; margin: 0; }
+  .statstrip { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 16px; box-shadow: var(--shadow); min-width: 132px; }
+  .stat b { font-family: var(--mono); font-size: 23px; font-weight: 680; display: block;
+    font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .stat span { font-family: var(--sans); font-size: 11.5px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .08em; }
+  .stat.gpu b { color: var(--gpu); } .stat.cpu b { color: var(--cpu); }
+
+  /* ---- section rhythm ---- */
+  section { padding: 46px 0; border-bottom: 1px solid var(--line); }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin: 0 0 18px; }
+  .sec-head .idx { font-family: var(--mono); color: var(--gpu); font-size: 15px;
+    font-weight: 600; padding-top: 4px; }
+  h2 { font-size: clamp(23px, 3.4vw, 31px); font-weight: 720; margin: 0; }
+  h3 { font-size: 18px; font-weight: 680; margin: 26px 0 8px; color: var(--ink);
+    font-family: var(--sans); }
+  .col p { margin: 14px 0; }
+
+  /* ---- panels / callouts ---- */
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px 22px; box-shadow: var(--shadow); margin: 22px 0; }
+  .callout { border-left: 3px solid var(--gpu); background: var(--panel-2);
+    border-radius: 0 12px 12px 0; padding: 14px 18px; margin: 20px 0; font-size: 16.5px; }
+  .callout.warn { border-color: var(--warn); }
+  .callout.void { border-color: var(--bad); }
+  .callout .lab { font-family: var(--sans); font-size: 11.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .1em; color: var(--faint); display: block;
+    margin-bottom: 4px; }
+
+  /* ---- tables ---- */
+  .tbl-scroll { overflow-x: auto; margin: 20px 0; border: 1px solid var(--line);
+    border-radius: 12px; background: var(--panel); box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; font-family: var(--mono);
+    font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  caption { text-align: left; font-family: var(--sans); font-size: 13px; color: var(--muted);
+    padding: 12px 16px 0; }
+  th, td { padding: 8px 14px; text-align: right; white-space: nowrap;
+    border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { font-family: var(--sans); font-size: 11.5px; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--muted); font-weight: 650; position: sticky; top: 0;
+    background: var(--panel); }
+  tbody tr:last-child td { border-bottom: none; }
+  tr.peak td { background: var(--gpu-soft); font-weight: 680; }
+  tr.dim td { color: var(--muted); }
+  .tag { font-family: var(--sans); font-size: 11px; font-weight: 700; padding: 2px 8px;
+    border-radius: 999px; letter-spacing: .03em; }
+  .tag.gpu { background: var(--gpu-soft); color: var(--gpu); }
+  .tag.cpu { background: var(--cpu-soft); color: var(--cpu); }
+  .tag.void { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
+
+  /* ---- charts ---- */
+  figure { margin: 24px 0; }
+  .chart { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px 18px 10px; box-shadow: var(--shadow); }
+  .chart h4 { font-family: var(--sans); font-size: 15px; margin: 0 0 2px; font-weight: 680; }
+  .chart .sub { font-family: var(--sans); font-size: 13px; color: var(--muted); margin: 0 0 8px; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-family: var(--sans);
+    font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+  .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px;
+    vertical-align: -1px; margin-right: 6px; }
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .ax { stroke: var(--line-strong); stroke-width: 1; }
+  .grid { stroke: var(--line); stroke-width: 1; }
+  .axlab { font-family: var(--sans); font-size: 11px; fill: var(--faint); }
+  .dotlab { font-family: var(--mono); font-size: 11px; fill: var(--ink); font-variant-numeric: tabular-nums; }
+
+  ul.clean { padding-left: 1.1em; } ul.clean li { margin: 8px 0; }
+  .foot { padding: 40px 0 70px; color: var(--muted); font-size: 15px; }
+  .foot a { font-family: var(--mono); font-size: 14px; }
+  hr.soft { border: none; border-top: 1px solid var(--line); margin: 8px 0; }
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal { opacity: 0; transform: translateY(8px); transition: opacity .5s ease, transform .5s ease; }
+    .reveal.in { opacity: 1; transform: none; }
+  }
+</style>
+
+<header class="hero">
+  <div class="wrap hero-inner">
+    <div class="eyebrow">Field notes · 1× NVIDIA RTX A5000 (24&nbsp;GB) · Qwen3-4B&nbsp;·&nbsp;Q6_K&nbsp;·&nbsp;llama.cpp</div>
+    <h1>LLM Inference on a Single A5000</h1>
+    <p class="lede">A numbers-first field guide to what actually runs out first when you serve a small fine-tuned model from one GPU. It is not VRAM. It is not even the GPU's compute.</p>
+    <div class="statstrip">
+      <div class="stat gpu"><b>802</b><span>peak tok/s · C≈64</span></div>
+      <div class="stat"><b>6.56</b><span>bits / weight (Q6_K)</span></div>
+      <div class="stat gpu"><b>108</b><span>MiB VRAM / slot</span></div>
+      <div class="stat cpu"><b>2.5→29%</b><span>server CPU as C→128</span></div>
+      <div class="stat"><b>0</b><span>failures / 2,620 reqs</span></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section>
+    <div class="col">
+      <p style="font-size:16px;color:var(--muted);margin-top:8px">A 4B model at Q6_K is ~3.3&nbsp;GB — tiny against 24&nbsp;GB. So the question was never <em>"does it fit?"</em> It's <em>"how many users, how fast, and what breaks first?"</em> Everything below is measured on one rig; the caveats in §8 are the difference between seeing a number and understanding it. Two claims are flagged loudly throughout: the vLLM engine comparison <b>did not happen</b> (it crashed at warmup), and the "extract a LoRA with SVD" probe measures something subtler than its nickname.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="idx">§1</span><h2>Concurrency capacity — the core finding</h2></div>
+    <div class="col">
+      <p><b>Method (label it precisely):</b> llama.cpp, closed-loop <em>barrier-synchronous</em> load, <code>ignore_eos</code>, fixed 256-token prompt / 256-token generation, <code>--parallel == C</code>, 768-token slots. This is a <b>saturation-capacity probe</b>, not a real arrival-pattern test — keep that for §6.</p>
+      <p>Aggregate throughput climbs to a broad plateau over <b>C = 32–64</b>, <b>peaks at C = 64 (801.8 tok/s)</b>, then <b>declines</b> to 749 by C = 128. There is no simple "knee at 30": the biggest single batching win is C8→C16 (+262 tok/s), and marginal gain goes <em>negative</em> past 64.</p>
+    </div>
+
+    <figure class="chart reveal">
+      <h4>Throughput rises, plateaus, then declines</h4>
+      <p class="sub">Aggregate output tok/s vs concurrency (log axis). The peak is at C=64 — beyond it, more streams <em>lose</em> throughput.</p>
+      <div id="c-throughput"></div>
+    </figure>
+
+    <div class="col">
+      <h3>The per-user view collapses the whole way up</h3>
+      <p>Fair-share throughput (aggregate ÷ C) falls from the first step: 118 → 12.5 at the peak → <b>5.9 tok/s at C=128</b> (a 20× degradation). Because each request emits a fixed 256 tokens, latency is just its inverse: p50 climbs <b>2.2 s → 43.6 s</b>. At the throughput peak, each user already waits ~20 s. <b>"Max throughput" and "good latency" are different operating points.</b></p>
+      <h3>What actually breaks first: the bottleneck leaves the GPU</h3>
+      <p>This is the counterintuitive core. As C rises, the <b>GPU does less</b> (util median 94%→41%, power 229&nbsp;W→~168&nbsp;W) while the <b>llama-server process CPU rises ~11×</b> (2.5%→29%). The GPU isn't idle — it's <em>bursty/starved</em>: p95 util pins at 99% while the median sits at 40%, because it waits between CPU-scheduled batches.</p>
+    </div>
+
+    <figure class="chart reveal">
+      <h4>The crossover: GPU falls, host CPU rises</h4>
+      <p class="sub">The limiter moves off the GPU and onto host-side scheduling — which is why throughput peaks and then declines.</p>
+      <div id="c-crossover"></div>
+      <div class="legend"><span><i style="background:var(--gpu)"></i>GPU util median (%)</span><span><i style="background:var(--cpu)"></i>llama-server process CPU (%)</span></div>
+    </figure>
+
+    <div class="callout warn"><span class="lab">Measurement hygiene</span>nvidia-smi <code>utilization.memory</code> is the fraction of time the memory controller was busy — a proxy, <b>not</b> GB/s. It falls at high C simply because the GPU idles more between bursts. No bandwidth claim rests on it.</div>
+
+    <figure class="chart reveal">
+      <h4>VRAM is preallocated per configured slot — not per live request</h4>
+      <p class="sub">A near-perfect line: 108.07 MiB/slot + 3,476 MiB base (R² = 1.00000). Running fewer requests than slots does not reclaim KV.</p>
+      <div id="c-vram"></div>
+    </figure>
+
+    <div class="tbl-scroll">
+      <table>
+        <caption>Concurrency sweep — the master numbers (E1, 12 points + Work-A cross-check).</caption>
+        <thead><tr><th>C</th><th class="n">Agg tok/s</th><th class="n">Speedup</th><th class="n">Fair-share</th><th class="n">Lat p50 (s)</th><th class="n">TTFT p95 (s)</th><th class="n">GPU util med/p95</th><th class="n">Power W</th><th class="n">Srv CPU %</th><th class="n">VRAM MiB</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td class="n">118.4</td><td class="n">1.0×</td><td class="n">118.4</td><td class="n">2.18</td><td class="n">0.08</td><td class="n">94 / 95</td><td class="n">229</td><td class="n">2.55</td><td class="n">3,584</td></tr>
+          <tr><td>8</td><td class="n">375.4</td><td class="n">3.2×</td><td class="n">46.9</td><td class="n">5.45</td><td class="n">0.48</td><td class="n">80 / 94</td><td class="n">228</td><td class="n">2.80</td><td class="n">4,340</td></tr>
+          <tr><td>16</td><td class="n">637.6</td><td class="n">5.4×</td><td class="n">39.9</td><td class="n">6.42</td><td class="n">0.90</td><td class="n">61 / 99</td><td class="n">223</td><td class="n">3.87</td><td class="n">5,204</td></tr>
+          <tr><td>32</td><td class="n">748.5</td><td class="n">6.3×</td><td class="n">23.4</td><td class="n">10.94</td><td class="n">1.35</td><td class="n">50 / 92</td><td class="n">193</td><td class="n">7.22</td><td class="n">6,932</td></tr>
+          <tr><td>48</td><td class="n">789.0</td><td class="n">6.7×</td><td class="n">16.4</td><td class="n">15.54</td><td class="n">1.57</td><td class="n">44 / 99</td><td class="n">178</td><td class="n">10.44</td><td class="n">8,664</td></tr>
+          <tr class="peak"><td>64</td><td class="n">801.8</td><td class="n">6.8×</td><td class="n">12.5</td><td class="n">20.41</td><td class="n">2.20</td><td class="n">46 / 99</td><td class="n">174</td><td class="n">13.82</td><td class="n">10,388</td></tr>
+          <tr class="dim"><td>96</td><td class="n">772.7</td><td class="n">6.5×</td><td class="n">8.0</td><td class="n">31.79</td><td class="n">3.19</td><td class="n">38 / 99</td><td class="n">141</td><td class="n">21.26</td><td class="n">13,854</td></tr>
+          <tr class="dim"><td>128</td><td class="n">749.3</td><td class="n">6.3×</td><td class="n">5.9</td><td class="n">43.64</td><td class="n">4.05</td><td class="n">41 / 99</td><td class="n">168</td><td class="n">29.13</td><td class="n">17,308</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="col" style="font-size:15px;color:var(--muted)">Zero failures across 2,620 requests; the server's <code>tokens_predicted_total</code> matched the client exactly at every point. A repeat of C=32 agreed within 0.6%; an independent Work-A run (2× samples) landed on the same curve.</p>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="idx">§2</span><h2>Precision knobs — decode is bandwidth-bound, prefill is not</h2></div>
+    <div class="col"><p>Single-stream <code>llama-bench</code> micro-benchmarks (raw kernel throughput; a different quantity from the server numbers — don't cross the streams). Decode reads every weight once per token, so <b>fewer bits = faster decode</b>. Prefill is a big batched GEMM, so it's compute-bound and flat.</p></div>
+    <figure class="chart reveal">
+      <h4>Decode speed scales with weight size; prefill doesn't</h4>
+      <p class="sub">tg128 decode tok/s by weight quant. Q4_K_M is 2.18× BF16. (Prefill pp512 stays ~5,500–6,500 across all — compute-bound.)</p>
+      <div id="c-quant"></div>
+    </figure>
+    <div class="col">
+      <ul class="clean">
+        <li><b>Flash-attention: on, always.</b> +15–21% prefill, +4–9% decode — free.</li>
+        <li><b>KV-cache dtype is a memory knob, barely a speed knob.</b> <code>q8_0</code> KV halves the KV footprint for ~4% decode cost — worth it only when KV memory is the real constraint (long context / many slots), not at short single-stream.</li>
+        <li><b>Choose weight quant by budget:</b> Q4_K_M if decode speed rules; Q6_K/Q8_0 if quality rules. Prefill barely cares about bit-width.</li>
+      </ul>
+      <p style="font-size:15px;color:var(--muted)">Caveat: 3 samples/point, first a cold outlier — the ~17% prefill spread is within noise, reinforcing "flat," not any real ordering.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="idx">§3</span><h2>Engine choice — and why this comparison is <span style="color:var(--bad)">void</span></h2></div>
+    <div class="callout void"><span class="lab">Do not violate this</span><b>The llama.cpp-vs-vLLM comparison did not happen.</b> vLLM 0.25.1 loaded the model, then <code>EngineCore</code> died at <code>kernel_warmup</code> with a Triton JIT parse bug — <b>0 requests served</b>. No winner, ratio, or latency delta between engines can be stated; the hypothesis is untested, not refuted. And it wouldn't have been iso-precision anyway (llama.cpp Q6_K 6-bit vs vLLM bf16 16-bit).</div>
+    <div class="col"><p>The llama.cpp side did run cleanly on a fixed 100-slot server (below). It independently reproduces §1: sublinear scaling (6.4× for 100× clients), sharp tail-latency growth, and the same bursty/host-bound signature (GPU util 93%→41% while p95 pins at 99%). Note C=30 here is only <b>370 tok/s</b> — half of §1's dedicated-30-slot 720 — because over-provisioning to 100 slots when serving 30 clients hurts. Right-size your slot count.</p></div>
+    <div class="tbl-scroll"><table>
+      <caption>E5 — llama.cpp Q6_K, fixed 100-slot deployment (vLLM omitted; crashed).</caption>
+      <thead><tr><th>Engine</th><th class="n">C</th><th class="n">tok/s</th><th class="n">TTFT p99 (s)</th><th class="n">Lat p50 (s)</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>llama.cpp Q6_K</td><td class="n">1</td><td class="n">118.1</td><td class="n">0.08</td><td class="n">2.17</td><td><span class="tag gpu">20/0 ok</span></td></tr>
+        <tr><td>llama.cpp Q6_K</td><td class="n">30</td><td class="n">370.5</td><td class="n">1.70</td><td class="n">22.1</td><td><span class="tag gpu">600/0 ok</span></td></tr>
+        <tr><td>llama.cpp Q6_K</td><td class="n">100</td><td class="n">753.1</td><td class="n">5.29</td><td class="n">33.6</td><td><span class="tag gpu">2000/0 ok</span></td></tr>
+        <tr class="dim"><td>vLLM bf16</td><td class="n">1/30/100</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td><span class="tag void">crashed · 0 served</span></td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="idx">§4</span><h2>Is a LoRA "just a matmul"? The SVD-extraction probe</h2></div>
+    <div class="col">
+      <p>Mechanically, yes: a merged LoRA is <code>W + (α/r)·B·A</code> — base weights plus a low-rank matmul. The tempting leap is <em>"so I can subtract any two checkpoints, SVD the difference, and recover the LoRA that made it."</em> The study tests exactly that, with a <b>control</b> (a delta we <em>know</em> is a rank-16 LoRA) and a <b>treatment</b> (the delta between two published checkpoints).</p>
+    </div>
+    <div class="tbl-scroll"><table>
+      <caption>SVD of the weight delta, 252 target-linear matrices.</caption>
+      <thead><tr><th>Metric</th><th class="n">Control: known r=16 LoRA</th><th class="n">Instruct−Base (inter-checkpoint)</th></tr></thead>
+      <tbody>
+        <tr><td>mean effective rank (/2560)</td><td class="n">42.8</td><td class="n">1,507</td></tr>
+        <tr><td>‖ΔW‖ / ‖W‖</td><td class="n">~0.2%</td><td class="n">~17%</td></tr>
+        <tr class="peak"><td>rank-16 SVD retained energy</td><td class="n">74.2%</td><td class="n">3.55%</td></tr>
+        <tr><td>embed_tokens delta</td><td class="n">0.0</td><td class="n">~20.4%</td></tr>
+        <tr><td>rank-16 retained: attn / mlp</td><td class="n">74 / 74%</td><td class="n">5.4 / 2.8%</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout"><span class="lab">Read this framing, don't skip it</span>
+      <ul class="clean" style="margin:4px 0">
+        <li>It is an <b>inter-checkpoint delta, not a proven full fine-tune</b> — Instruct-2507 declares no base model.</li>
+        <li>Any rank-r SVD is <b>"LoRA-representable," never "a working extracted LoRA"</b> — no task behavior was trained or validated.</li>
+        <li>The high-rank result <b>does not refute "LoRA can match full fine-tuning"</b> (cf. Thinking Machines, <em>LoRA Without Regret</em>): a <em>trained</em> low-rank adapter stores task information, not the full weight delta — orthogonal to this measurement.</li>
+      </ul>
+      <b>Takeaway:</b> "merged LoRA = base + low-rank matmul" is true; "so I can SVD any diff back into a LoRA" is false in general — the real between-checkpoint delta is high-rank, embedding-shifting, and MLP-heavy.</div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="idx">§5</span><h2>Finite-user load (Locust) — closed-loop, labeled honestly</h2></div>
+    <div class="col"><p>The nearest thing here to "real traffic": a finite pool of users with think-time between requests. Still <b>closed-loop</b> — user count is an <em>upper bound</em> on in-flight concurrency, and offered load is throttled by the pool, not pushed to saturation. <b>Never</b> compare these tok/s with the §1 saturation numbers; they measure different worlds.</p></div>
+    <div class="tbl-scroll"><table>
+      <caption>E2 short-chat (fixed 64 slots) and E3 multi-turn growing context (20 slots, 4096-tok).</caption>
+      <thead><tr><th>Run</th><th class="n">Steady tok/s</th><th class="n">TTFT p50 (ms)</th><th class="n">e2e p50 (s)</th><th class="n">Note</th></tr></thead>
+      <tbody>
+        <tr><td>E2 · 20 users</td><td class="n">292.6</td><td class="n">109</td><td class="n">7.9</td><td>think-time throttled</td></tr>
+        <tr><td>E2 · 60 users</td><td class="n">412.3</td><td class="n">230</td><td class="n">20.1</td><td>per-slot decode collapse (60&lt;64 slots, not queueing)</td></tr>
+        <tr><td>E3 · 20 users · 8 turns</td><td class="n">205.9</td><td class="n">247</td><td class="n">10.2</td><td>4.3 : 1 prefill : decode</td></tr>
+      </tbody>
+    </table></div>
+    <div class="col"><p><b>The E3 teaching case:</b> re-prefilling the whole growing history every turn produces a scary 4.3 : 1 prefill : decode <em>token</em> ratio — but prefill runs ~4,200 tok/s while decode runs ~13 tok/s effective, so the "tax" costs only ~40 → ~300 ms of TTFT and <b>barely moves the ~10 s decode-dominated latency</b>. Always ask: expensive in what units, and is that the bottleneck?</p></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="idx">§6</span><h2>When to use what</h2></div>
+    <div class="tbl-scroll"><table>
+      <caption>Read the operating point off the data — match it to your goal, not to a peak number.</caption>
+      <thead><tr><th>Goal</th><th>Do this</th><th>Because</th></tr></thead>
+      <tbody>
+        <tr><td>Lowest latency per user</td><td>Concurrency C ≤ 4, over-provision</td><td>fair-share 118→73 tok/s, p50 2–3.5 s</td></tr>
+        <tr><td>Max total throughput</td><td>C ≈ 48–64 (~789–802 tok/s)</td><td>peak at 64; 32–64 all ≥93% of peak</td></tr>
+        <tr><td>Balanced tok/s + latency</td><td>C ≈ 24–32</td><td>efficient region ends here; p50 ~9–11 s</td></tr>
+        <tr><td>Avoid waste</td><td>Do not exceed C ≈ 64</td><td>throughput <em>declines</em> beyond — you pay CPU for nothing</td></tr>
+        <tr><td>Fastest decode / tok per byte</td><td>Quantize weights low (Q4_K_M)</td><td>decode bandwidth-bound; 2.18× BF16</td></tr>
+        <tr><td>Best quality in budget</td><td>Q6_K or Q8_0 (default: Q6_K)</td><td>prefill flat, so higher bits cost little there</td></tr>
+        <tr><td>Any config</td><td>Flash-attention ON</td><td>+15–21% prefill, free</td></tr>
+        <tr><td>Sizing VRAM</td><td>~3.5 GiB + 108 MiB × slots</td><td>linear preallocation (R²=1.0); never the binding limit</td></tr>
+        <tr><td>llama.cpp vs vLLM</td><td>Benchmark it yourself, iso-precision</td><td>vLLM crashed here — no comparison exists</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section style="border-bottom:none">
+    <div class="sec-head"><span class="idx">§7</span><h2>Limitations you must carry with the numbers</h2></div>
+    <div class="col"><ul class="clean">
+      <li><b>One GPU, one build, one model.</b> A5000 24 GB, llama.cpp <code>91d2fc38</code>, Qwen3-4B Q6_K. The peak at 64, the 108 MiB/slot slope, the CPU crossover — all rig-specific; they don't transfer.</li>
+      <li><b>Closed-loop ≠ open-loop.</b> §1 is a fully-backlogged saturation probe; Locust is finite-user think-time. Their tok/s are not comparable and neither is an open-loop Poisson-arrival SLO test.</li>
+      <li><b><code>utilization.memory</code> is a proxy, not bandwidth (GB/s).</b> And GPU util <em>median</em> is misleading alone — reason from the median-vs-p95 gap (median 40% with p95 99% = bursty/starved).</li>
+      <li><b>The engine comparison is void</b> — vLLM served 0 requests. Every E5 number is llama.cpp-only.</li>
+      <li><b>The SVD study measures an inter-checkpoint delta</b>, "LoRA-representable" ≠ a validated adapter, and it refutes nothing about trained-LoRA quality. bf16 read-back also inflates the control's rank floors.</li>
+      <li><b>E4 is 3 samples/point</b> (first a cold outlier); "prefill is flat" is a within-noise statement, not a fine ordering.</li>
+    </ul></div>
+  </section>
+
+  <div class="col foot">
+    <hr class="soft">
+    <p>Reproducible pipeline and every raw result file are in the repository. Two codex-council reviews and a 5-agent analysis workflow informed this guide; flagged overclaims were corrected against the raw JSON.</p>
+    <p><a href="https://github.com/ehzawad/qwen3-lora-gguf-bench">github.com/ehzawad/qwen3-lora-gguf-bench</a></p>
+  </div>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const NS = "http://www.w3.org/2000/svg";
+  function el(n, a) { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); return e; }
+  const data = {
+    C: [1,2,4,8,16,24,32,48,64,96,128],
+    tps: [118.4,205.5,293.5,375.4,637.6,704.2,748.5,789.0,801.8,772.7,749.3],
+    gpu: [94,91,86,80,61,54,50,44,46,38,41],
+    cpu: [2.55,2.60,2.67,2.80,3.87,5.27,7.22,10.44,13.82,21.26,29.13],
+    vram: [3584,3692,3908,4340,5204,6072,6932,8664,10388,13854,17308],
+    quantLabel: ["Q4_K_M","Q5_K_M","Q6_K","Q8_0","BF16"],
+    quantTps: [167.99,155.15,133.26,125.37,77.01]
+  };
+  const W = 900, H = 340, m = { t: 18, r: 18, b: 40, l: 52 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const lx = (c) => m.l + (Math.log2(c) / Math.log2(128)) * iw;   // log2 x for C
+
+  function frame(mount) {
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" });
+    mount.appendChild(svg); return svg;
+  }
+  function xticks(svg, yb) {
+    data.C.forEach((c) => {
+      const x = lx(c);
+      svg.appendChild(el("text", { x, y: yb + 22, class: "axlab", "text-anchor": "middle" })).textContent = c;
+    });
+  }
+  function yaxis(svg, ymin, ymax, fmt) {
+    const ticks = 4;
+    for (let i = 0; i <= ticks; i++) {
+      const v = ymin + (ymax - ymin) * i / ticks;
+      const y = m.t + ih - (ih * i / ticks);
+      svg.appendChild(el("line", { x1: m.l, y1: y, x2: m.l + iw, y2: y, class: "grid" }));
+      svg.appendChild(el("text", { x: m.l - 8, y: y + 4, class: "axlab", "text-anchor": "end" })).textContent = fmt(v);
+    }
+  }
+  function linePath(vals, ymin, ymax) {
+    return vals.map((v, i) => {
+      const x = lx(data.C[i]);
+      const y = m.t + ih - ((v - ymin) / (ymax - ymin)) * ih;
+      return (i ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1);
+    }).join(" ");
+  }
+  function pt(vals, i, ymin, ymax) {
+    return [lx(data.C[i]), m.t + ih - ((vals[i] - ymin) / (ymax - ymin)) * ih];
+  }
+
+  // 1 — throughput
+  (function () {
+    const svg = frame(document.getElementById("c-throughput"));
+    yaxis(svg, 0, 900, (v) => Math.round(v));
+    xticks(svg, m.t + ih);
+    svg.appendChild(el("path", { d: linePath(data.tps, 0, 900), fill: "none", stroke: css("--gpu"), "stroke-width": 2.5, "stroke-linejoin": "round" }));
+    data.tps.forEach((v, i) => {
+      const [x, y] = pt(data.tps, i, 0, 900);
+      const peak = data.C[i] === 64;
+      svg.appendChild(el("circle", { cx: x, cy: y, r: peak ? 6 : 3.4, fill: peak ? css("--gpu") : css("--panel"), stroke: css("--gpu"), "stroke-width": 2 }));
+      if (peak) {
+        svg.appendChild(el("text", { x: x, y: y - 14, class: "dotlab", "text-anchor": "middle", "font-weight": "700" })).textContent = "802 @ C=64";
+      }
+    });
+    [96,128].forEach((c) => { const i = data.C.indexOf(c); const [x, y] = pt(data.tps, i, 0, 900);
+      svg.appendChild(el("text", { x, y: y - 12, class: "dotlab", "text-anchor": "middle", fill: css("--cpu") })).textContent = "↓" + Math.round(data.tps[i]); });
+    svg.appendChild(el("text", { x: m.l - 40, y: m.t - 4, class: "axlab" })).textContent = "tok/s";
+    svg.appendChild(el("text", { x: m.l + iw, y: m.t + ih + 36, class: "axlab", "text-anchor": "end" })).textContent = "concurrency C (log)";
+  })();
+
+  // 2 — crossover, dual axis
+  (function () {
+    const svg = frame(document.getElementById("c-crossover"));
+    yaxis(svg, 0, 100, (v) => Math.round(v));
+    xticks(svg, m.t + ih);
+    svg.appendChild(el("path", { d: linePath(data.gpu, 0, 100), fill: "none", stroke: css("--gpu"), "stroke-width": 2.5, "stroke-linejoin": "round" }));
+    svg.appendChild(el("path", { d: linePath(data.cpu, 0, 100), fill: "none", stroke: css("--cpu"), "stroke-width": 2.5, "stroke-linejoin": "round" }));
+    data.gpu.forEach((v, i) => { const [x, y] = pt(data.gpu, i, 0, 100); svg.appendChild(el("circle", { cx: x, cy: y, r: 3, fill: css("--gpu") })); });
+    data.cpu.forEach((v, i) => { const [x, y] = pt(data.cpu, i, 0, 100); svg.appendChild(el("circle", { cx: x, cy: y, r: 3, fill: css("--cpu") })); });
+    const gi = data.C.indexOf(1), ci = data.C.indexOf(128);
+    let p = pt(data.gpu, gi, 0, 100); svg.appendChild(el("text", { x: p[0] + 6, y: p[1] - 8, class: "dotlab", fill: css("--gpu") })).textContent = "94%";
+    p = pt(data.cpu, ci, 0, 100); svg.appendChild(el("text", { x: p[0], y: p[1] - 10, class: "dotlab", "text-anchor": "end", fill: css("--cpu") })).textContent = "29%";
+    svg.appendChild(el("text", { x: m.l - 40, y: m.t - 4, class: "axlab" })).textContent = "%";
+  })();
+
+  // 3 — VRAM linear
+  (function () {
+    const svg = frame(document.getElementById("c-vram"));
+    yaxis(svg, 0, 18000, (v) => (v/1000).toFixed(0) + "k");
+    xticks(svg, m.t + ih);
+    // fit line 108.07*slots + 3475.6
+    const fit = data.C.map((c) => 108.07 * c + 3475.6);
+    svg.appendChild(el("path", { d: linePath(fit, 0, 18000), fill: "none", stroke: css("--faint"), "stroke-width": 1.4, "stroke-dasharray": "5 4" }));
+    data.vram.forEach((v, i) => { const [x, y] = pt(data.vram, i, 0, 18000); svg.appendChild(el("circle", { cx: x, cy: y, r: 3.6, fill: css("--gpu") })); });
+    svg.appendChild(el("text", { x: m.l + iw, y: m.t + 14, class: "dotlab", "text-anchor": "end", fill: css("--muted") })).textContent = "108.07 MiB/slot · R²=1.00000";
+    svg.appendChild(el("text", { x: m.l - 40, y: m.t - 4, class: "axlab" })).textContent = "MiB";
+  })();
+
+  // 4 — decode by quant (bars)
+  (function () {
+    const svg = frame(document.getElementById("c-quant"));
+    const n = data.quantTps.length, bw = iw / n * 0.6, gap = iw / n;
+    yaxis(svg, 0, 180, (v) => Math.round(v));
+    data.quantTps.forEach((v, i) => {
+      const x = m.l + gap * i + (gap - bw) / 2;
+      const h = (v / 180) * ih, y = m.t + ih - h;
+      const c = i === 0 ? css("--gpu") : (i === n - 1 ? css("--cpu") : css("--gpu"));
+      const bar = el("rect", { x, y, width: bw, height: h, rx: 4, fill: c, opacity: i === 0 || i === n - 1 ? 1 : 0.55 });
+      svg.appendChild(bar);
+      svg.appendChild(el("text", { x: x + bw / 2, y: y - 7, class: "dotlab", "text-anchor": "middle" })).textContent = v.toFixed(0);
+      svg.appendChild(el("text", { x: x + bw / 2, y: m.t + ih + 20, class: "axlab", "text-anchor": "middle" })).textContent = data.quantLabel[i];
+    });
+    svg.appendChild(el("text", { x: m.l - 40, y: m.t - 4, class: "axlab" })).textContent = "tok/s";
+  })();
+
+  // reveal on scroll
+  if (matchMedia("(prefers-reduced-motion: no-preference)").matches && "IntersectionObserver" in window) {
+    const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: 0.12 });
+    document.querySelectorAll(".reveal").forEach((n) => io.observe(n));
+  } else {
+    document.querySelectorAll(".reveal").forEach((n) => n.classList.add("in"));
+  }
+})();
+</script>

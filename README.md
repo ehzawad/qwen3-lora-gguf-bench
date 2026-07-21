@@ -160,8 +160,9 @@ KV cache grows with slots × 768-ctx, but VRAM peaks at just 3,590 / 6,744 /
 **14,550 MiB** — even C=100 uses only ~59% of the A5000's 24 GB, with ~10 GB of
 headroom. Zero failures across all 2,620 requests (20 / 600 / 2,000 OK) → no slot
 exhaustion or OOM. The system is throughput-saturated and latency-bound well
-before it is VRAM- or KV-bound. Temperatures stayed ≤ 78 °C (no thermal throttle),
-and host RAM/CPU were never near saturation (110 GB free, 40 threads).
+before it is VRAM- or KV-bound. Temperatures stayed ≤ 78 °C (no thermal throttle);
+host RAM had ~110 GB free. (This 1/30/100 run did not record CPU telemetry; the
+**E1 sweep does** — and it is what substantiates the host-bound claim below.)
 
 The most telling signal: **GPU utilization and power *fall* as concurrency rises**
 — util median 94% → 51% → 41%, power 229 W → 194 W → 157 W — while throughput
@@ -174,20 +175,25 @@ not GB/s, so the bandwidth claim rests on that proxy plus the clock signature, t
 power wall, and roofline arithmetic (122.4 tok/s × 3.3 GB ≈ 404 GB/s ≈ 53% of the
 768 GB/s spec peak) aligning — proving DRAM saturation would require a profiler
 (Nsight Compute / DCGM DRAM-active counters). At C=30/100 the GPU is instead
-visibly **starved** (util and power *below* the C=1 levels), so the ceiling there
-is **host/serving-pipeline-side** (batch assembly, per-stream sampling, socket
-handling, and the closed-loop client harness itself), not GPU-hardware-bound. As
-context, llama.cpp switches its quantized matmul from the MMQ path to a
-dequantize+cuBLAS GEMM once the active batch crosses ~64 tokens, so C=30 runs MMQ
-and C=100 the cuBLAS path — but with only 41% util and 157 W at C=100, that path
-change is not the binding constraint.
+visibly **underfed** (util and power *below* the C=1 levels). The fine-grained
+**E1 sweep** (see the full report / `results/sweep-*`) confirms the cause with CPU
+telemetry: as concurrency climbs to 128, the llama-server **process CPU rises from
+~2.5% to ~29% of the 40-thread host** while GPU util falls to ~41% and power to
+~168 W — evidence the ceiling is the **serving/host pipeline** (scheduling,
+sampling, SSE handling across many streams), not GPU compute.
+*(Correction: an earlier draft here claimed a batch-64 MMQ→cuBLAS kernel switch.
+That is **wrong** for Q6_K on Ampere at this llama.cpp commit — the MMQ path is
+used regardless of batch — so the claim is withdrawn.)*
 
 **Answering the original questions directly:** a single A5000 running this Q6_K
 4B via llama.cpp serves **~46,000 output tokens/minute** whether you offer it 30
 or 100 concurrent short-chat requests — it *handles* 100 concurrent fine (no
 failures, ~15 GB VRAM), but the extra 70 requests mostly wait: throughput barely
-moves (+6%) while median latency triples to ~33 s. For interactive use, **~30
-concurrent is the sweet spot** (~43k tok/min at ~10 s latency). VRAM headroom
+moves (+6%) while median latency triples to ~33 s. The **E1 sweep** locates the
+actual throughput **peak at C≈64 (~800 tok/s), which then *declines* beyond** —
+and ~C=30 already reaches ~93% of that peak. Under an interactive-latency
+preference, **~30 concurrent is a reasonable operating point** (~43k tok/min at
+~10 s latency); this is a tradeoff choice, not an objective optimum. VRAM headroom
 means you could push context or model size further before memory becomes the
 limit; the practical ceiling here is the serving pipeline feeding a
 power-capped GPU, not the 24 GB.

@@ -1,0 +1,81 @@
+{
+  "engine": "llamacpp-q6k",
+  "tag": "llamacpp-c001",
+  "concurrency": 1,
+  "requests_ok": 20,
+  "requests_failed": 0,
+  "completion_tokens_total": 5120,
+  "makespan_s": 43.348952262080275,
+  "output_tokens_per_s": 118.11127450198484,
+  "output_tokens_per_min": 7086.6764701190905,
+  "server_generated_tokens_delta": 5120.0,
+  "prompt_tokens_example": 235,
+  "ttft_s": {
+    "p50": 0.07437121099792421,
+    "p90": 0.07868567598052323,
+    "p95": 0.08047454606276006,
+    "p99": 0.08047454606276006,
+    "max": 0.08047454606276006
+  },
+  "latency_s": {
+    "p50": 2.170812778058462,
+    "p90": 2.198208078974858,
+    "p95": 2.2021279230248183,
+    "p99": 2.2021279230248183,
+    "max": 2.2021279230248183
+  },
+  "vram_ready_mib": 14290,
+  "vram_idle_mib": 14296,
+  "telemetry": {
+    "gpu_util_pct": {
+      "median": 93.0,
+      "p95": 94.0,
+      "peak": 94.0,
+      "min": 0.0,
+      "samples": 46
+    },
+    "mem_controller_util_pct_proxy": {
+      "median": 71.0,
+      "p95": 73.0,
+      "peak": 73.0,
+      "min": 0.0,
+      "samples": 46
+    },
+    "power_w": {
+      "median": 228.89499999999998,
+      "p95": 231.75,
+      "peak": 234.83,
+      "min": 88.86,
+      "samples": 46
+    },
+    "sm_clock_mhz": {
+      "median": 1515.0,
+      "p95": 1695.0,
+      "peak": 1905.0,
+      "min": 1470.0,
+      "samples": 46
+    },
+    "mem_used_mib": {
+      "median": 14296.0,
+      "p95": 14296.0,
+      "peak": 14296.0,
+      "min": 14296.0,
+      "samples": 46
+    },
+    "temperature_c": {
+      "median": 71.0,
+      "p95": 76.0,
+      "peak": 76.0,
+      "min": 57.0,
+      "samples": 46
+    },
+    "cpu_system_pct": {
+      "median": 7.8,
+      "p95": 11.3,
+      "peak": 13.7,
+      "samples": 45
+    },
+    "cpu_server_proc_pct": null
+  },
+  "failures_sample": []
+}

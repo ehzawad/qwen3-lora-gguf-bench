@@ -34,7 +34,12 @@ from urllib.parse import urljoin
 
 import requests
 
-BENCH_VERSION = "1.0"
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
+BENCH_VERSION = "1.1"
 
 
 def log(msg):
@@ -159,6 +164,18 @@ def get_metrics(base):
     return out
 
 
+def gpu_mem_used():
+    """GPU0 memory.used in MiB (one-shot), or None."""
+    try:
+        out = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=memory.used",
+             "--format=csv,noheader,nounits", "-i", "0"],
+            text=True, stderr=subprocess.DEVNULL).strip()
+        return int(out.splitlines()[0])
+    except Exception:
+        return None
+
+
 # ---------------------------------------------------------------- one request
 def do_request(base, prompt, max_tokens=256):
     """Blocking streaming request. Returns dict with timings + usage."""
@@ -235,9 +252,13 @@ class Telemetry:
         "clocks_event_reasons.sw_thermal_slowdown"
     )
 
-    def __init__(self, csv_path):
+    def __init__(self, csv_path, server_pid=None):
         self.csv_path = csv_path
+        self.server_pid = server_pid
         self.proc = None
+        self._cpu = []                    # (system_pct, server_proc_pct)
+        self._stop = threading.Event()
+        self._cpu_thread = None
 
     def start(self):
         cmd = ["nvidia-smi", "-i", "0", f"--query-gpu={self.QUERY}",
@@ -245,8 +266,34 @@ class Telemetry:
         self.fh = open(self.csv_path, "w")
         self.proc = subprocess.Popen(cmd, stdout=self.fh,
                                      stderr=subprocess.DEVNULL)
+        if psutil is not None:
+            self._cpu_thread = threading.Thread(target=self._cpu_loop, daemon=True)
+            self._cpu_thread.start()
+
+    def _cpu_loop(self):
+        proc = None
+        if self.server_pid:
+            try:
+                proc = psutil.Process(self.server_pid)
+                proc.cpu_percent(None)             # prime
+            except psutil.Error:
+                proc = None
+        psutil.cpu_percent(None)                   # prime system
+        n = psutil.cpu_count() or 1
+        while not self._stop.wait(1.0):
+            sysp = psutil.cpu_percent(None)        # 0..100 avg over all cores
+            srvp = None
+            if proc is not None:
+                try:
+                    srvp = proc.cpu_percent(None) / n   # 0..100 of whole box
+                except psutil.Error:
+                    srvp = None
+            self._cpu.append((sysp, srvp))
 
     def stop(self):
+        self._stop.set()
+        if self._cpu_thread:
+            self._cpu_thread.join(timeout=3)
         if self.proc:
             self.proc.terminate()
             try:
@@ -297,6 +344,15 @@ class Telemetry:
             return {"median": statistics.median(vals), "p95": p95,
                     "peak": max(vals), "min": min(vals), "samples": len(vals)}
 
+        def cstats(vals):
+            vals = [v for v in vals if v is not None]
+            if not vals:
+                return None
+            vals.sort()
+            p95 = vals[min(len(vals) - 1, int(0.95 * len(vals)))]
+            return {"median": statistics.median(vals), "p95": p95,
+                    "peak": max(vals), "samples": len(vals)}
+
         return {
             "gpu_util_pct": stats(["utilization.gpu"]),
             "mem_controller_util_pct_proxy": stats(["utilization.memory"]),
@@ -304,6 +360,8 @@ class Telemetry:
             "sm_clock_mhz": stats(["clocks.current.sm"]),
             "mem_used_mib": stats(["memory.used"]),
             "temperature_c": stats(["temperature.gpu"]),
+            "cpu_system_pct": cstats([c[0] for c in self._cpu]),
+            "cpu_server_proc_pct": cstats([c[1] for c in self._cpu]),
         }
 
 
@@ -361,14 +419,16 @@ def main():
             f"prompts will repeat (still unique-enough with nonce reuse).")
 
     server_log = outdir / f"server-{args.tag}.log"
-    telem = Telemetry(str(outdir / f"telemetry-{args.tag}.csv"))
     proc, fh = start_server(args, server_log)
+    telem = Telemetry(str(outdir / f"telemetry-{args.tag}.csv"), server_pid=proc.pid)
     result = {"ok": False}
     try:
         wait_health(base, proc)
         props = get_props(base)
         startup_line = read_startup_line(server_log)
-        log(f"server healthy. total_slots={props.get('total_slots')} | {startup_line}")
+        vram_ready = gpu_mem_used()      # after health, before any request
+        log(f"server healthy. total_slots={props.get('total_slots')} "
+            f"vram_ready={vram_ready} | {startup_line}")
 
         # warmup (discarded)
         log(f"warmup: {args.warmup} x {args.concurrency} requests")
@@ -376,6 +436,7 @@ def main():
 
         # settle + snapshot metrics
         time.sleep(2)
+        vram_idle = gpu_mem_used()       # post-warmup idle
         m_before = get_metrics(base)
         telem.start()
         time.sleep(1)
@@ -445,9 +506,17 @@ def main():
                 "n_ctx": props.get("default_generation_settings", {}).get("n_ctx"),
             },
             "server_startup_line": startup_line,
+            "vram_ready_mib": vram_ready,
+            "vram_idle_mib": vram_idle,
             "telemetry": telem.summarize(),
             "failures_sample": bad_reqs[:5],
         }
+        # per-request records so an external reader can recompute percentiles
+        with open(outdir / f"requests-{args.tag}.jsonl", "w") as jf:
+            for r in sink:
+                jf.write(json.dumps({k: r.get(k) for k in (
+                    "ok", "status", "t_start", "t_end", "ttft", "latency",
+                    "prompt_tokens", "completion_tokens", "finish_reason")}) + "\n")
         result["ok"] = len(bad_reqs) == 0 and len(ok_reqs) == need_measured(args)
         log(f"DONE {args.tag}: {out_tps*60:.0f} out-tok/min "
             f"({out_tps:.1f} tok/s), ok={len(ok_reqs)} fail={len(bad_reqs)}")

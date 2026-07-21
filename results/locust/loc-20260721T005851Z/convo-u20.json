@@ -1,0 +1,12 @@
+{
+  "window_s": 180.0,
+  "completion_tokens": 37058,
+  "prompt_tokens": 160916,
+  "requests_in_window": 278,
+  "tokens_per_s": 205.87777777777777,
+  "tokens_per_min": 12352.666666666666,
+  "ttft_ms_p50": 246.95507995784283,
+  "ttft_ms_p95": 465.13386897277087,
+  "e2e_ms_p50": 10230.584481032565,
+  "e2e_ms_p95": 11790.959288016893
+}
