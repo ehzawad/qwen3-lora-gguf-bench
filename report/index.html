@@ -236,7 +236,7 @@
 
   <section>
     <div class="sec-head"><span class="idx">§3</span><h2>Engine choice — llama.cpp vs vLLM vs SGLang (<a href="engines.html" style="color:var(--gpu)">measured</a>)</h2></div>
-    <div class="callout"><span class="lab">VOID → fixed</span>The first attempt was VOID — vLLM 0.25.1 (torch 2.11/triton 3.6 nightly) crashed at import, <b>0 requests</b>. Pinning a stable stack (<b>vLLM 0.11.0 / torch 2.8 / triton 3.4 / transformers 4.57</b>) fixed it. The comparison below is the real, fair one: <b>same merged 4B at matched bf16</b>, identical harness, 256-in/256-out, prefix-cache off, 0 failures.</div>
+    <div class="callout"><span class="lab">VOID → fixed</span>The first attempt was VOID — vLLM 0.25.1 (torch 2.11/triton 3.6 nightly) crashed at import, <b>0 requests</b>. Pinning a stable stack (<b>vLLM 0.11.0 / torch 2.8 / triton 3.4 / transformers 4.57</b>) fixed it. The comparison below is the real, fair one: <b>same merged 4B at matched bf16</b>, identical harness, ~240-token prompt / 256 generated, prefix-cache off, 0 failures (iso-precision, not iso-config — SGLang ran CUDA-graphs-off).</div>
     <div class="col"><p>The finding matches the theory: <b>at one user they tie</b> (llama.cpp 61 ≈ vLLM 68 tok/s); as concurrency climbs, vLLM (PagedAttention) and SGLang (RadixAttention) scale near-linearly while <b>llama.cpp plateaus and goes host-bound</b>. By C=64, <b>vLLM and SGLang are ~4× llama.cpp</b>.</p></div>
     <div class="tbl-scroll"><table>
       <caption>Aggregate output tok/s — bf16, merged Qwen3-4B, A5000. Best per row in teal.</caption>

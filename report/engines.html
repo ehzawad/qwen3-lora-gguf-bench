@@ -34,12 +34,12 @@
 <main class="wrap">
   <section>
     <h2>E5 — the fair, measured comparison</h2>
-    <div class="callout"><span class="lab">Why it's fair now</span>The original vLLM 0.25.1 (torch 2.11/triton 3.6 nightly) died at import (Triton JIT bug) and served <b>0 requests</b> — VOID. Pinning a stable stack (<b>vLLM 0.11.0 / torch 2.8 / triton 3.4 / transformers 4.57</b>) fixed it. All three engines now serve the <b>same merged Qwen3-4B at bf16</b> (matched precision), identical harness, <b>256-in/256-out</b>, <b>prefix-cache off</b>, fixed-server/vary-client. <b>0 failures</b> at every point.</div>
+    <div class="callout"><span class="lab">Why it's fair now</span>The original vLLM 0.25.1 (torch 2.11/triton 3.6 nightly) died at import (Triton JIT bug) and served <b>0 requests</b> — VOID. Pinning a stable stack (<b>vLLM 0.11.0 / torch 2.8 / triton 3.4 / transformers 4.57</b>) fixed it. All three engines now serve the <b>same merged Qwen3-4B at bf16</b> (matched precision), identical harness, <b>~240-token prompt / exactly 256 generated</b>, <b>prefix-cache off</b>, fixed-server/vary-client. <b>0 failures</b> at every point. (Iso-<em>precision</em>, not iso-<em>config</em>: SGLang ran CUDA-graphs-off.)</div>
     <div class="tbl"><table>
       <caption>Aggregate output tok/s (bf16, 4B, A5000). Best per row in bold-teal.</caption>
       <thead><tr><th>Concurrency</th><th>llama.cpp bf16</th><th>SGLang bf16</th><th>vLLM bf16</th></tr></thead>
       <tbody>
-        <tr><td>1</td><td class="gpu">61.3</td><td>34.7</td><td class="gpu">67.9</td></tr>
+        <tr><td>1</td><td>61.3</td><td>34.7</td><td class="gpu">67.9</td></tr>
         <tr><td>8</td><td>382.2</td><td>258.1</td><td class="gpu">478.7</td></tr>
         <tr><td>16</td><td>381.5</td><td>499.7</td><td class="gpu">853.3</td></tr>
         <tr><td>32</td><td>268.1</td><td>900.7</td><td class="gpu">1297.0</td></tr>
@@ -74,12 +74,12 @@
       </ul></div>
     </div>
 
-    <div class="callout"><span class="lab">The caveat on the scary numbers</span>A <a href="https://developers.redhat.com/articles/2026/06/15/llamacpp-vs-vllm-choosing-right-local-llm-inference-engine">Red&nbsp;Hat test</a> cites ~44× tok/s and stable sub-second TTFT at 64 users for vLLM — <b>but that used Llama-3.1-8B full-precision on one H200</b> (very different from our 4B/Q6_K/A5000), and the source calls it config-specific. Our <code>-cb</code>, <code>--parallel==C</code> llama.cpp had p99 TTFT ~7.5 s at C=128 (not 180 s), yet still hit a host-bound wall. vLLM's scheduler is <em>designed to</em> improve high-concurrency serving; <b>whether it would push past this rig's wall is unmeasured</b> — no engine winner is stated.</div>
+    <div class="callout"><span class="lab">Context for the scary numbers</span>A <a href="https://developers.redhat.com/articles/2026/06/15/llamacpp-vs-vllm-choosing-right-local-llm-inference-engine">Red&nbsp;Hat test</a> cites ~44× tok/s for vLLM — <b>but that used Llama-3.1-8B full-precision on one H200</b> (a very different config from our 4B/bf16/A5000), and the source calls it config-specific. Our own measured gap here is <b>~4×</b> at C=64, in the same direction. <b>Config caveat:</b> SGLang ran with CUDA graphs disabled (startup robustness) while vLLM used them — so this is iso-<em>precision</em>, not iso-<em>configuration</em>, and SGLang is somewhat handicapped.</div>
 
     <h3>Speed vs accuracy, and the latest levers</h3>
     <p class="col">Quantization: Q6_K near-lossless; at 4-bit, GGUF-Q4/AWQ/GPTQ are close and model/task/calibration-dependent (AWQ often matches/beats GPTQ per its <a href="https://arxiv.org/abs/2306.00978">paper</a>, ~1.45× kernel speedup). FP8: the A5000 lacks native FP8 W8A8 acceleration (needs Ada/Hopper), though Ampere runs FP8 weight-only via Marlin. The 2025–26 levers — <b>speculative decoding, chunked prefill, prefix caching, disaggregated prefill/decode</b> (vLLM still labels the last <em>experimental</em>) — typically move TTFT and effective concurrency more than a faster quant.</p>
-    <div class="callout"><span class="lab">Bottom line</span>Our headline concurrency numbers are a <b>floor</b>: one engine, no speculative decoding. Prefix caching we <em>did</em> measure single-stream on this rig (<a href="context.html">~6.8× lower TTFT at depth</a>); what stays unmeasured is how a different engine's scheduler behaves at high concurrency — vLLM crashed at warmup, so no cross-engine winner is stated.</div>
+    <div class="callout"><span class="lab">Bottom line</span>For a <b>single user or edge/CPU deploy</b>, llama.cpp is the pragmatic pick (simplest, competitive at C=1). For <b>many concurrent users</b>, vLLM and SGLang are ~4× faster here and hold better tail latency — pick vLLM for the lightest-latency p50, SGLang if its RadixAttention prefix reuse fits your multi-turn workload (we disabled it, so its real edge is understated). These are bf16 numbers on one model — not a universal ranking.</div>
   </section>
 
-  <div class="col foot">Raw data: <code>results/engines/eng-20260721T002012Z/</code> (incl. the vLLM crash note). Literature cited inline.<br><a href="https://github.com/ehzawad/qwen3-lora-gguf-bench">github.com/ehzawad/qwen3-lora-gguf-bench</a></div>
+  <div class="col foot">Raw data: <code>results/enginefair-20260721T062947Z/</code> (benchmark-*.json + SUMMARY.json; the original VOID run is noted in <code>results/engines/eng-20260721T002012Z/</code>). Literature cited inline.<br><a href="https://github.com/ehzawad/qwen3-lora-gguf-bench">github.com/ehzawad/qwen3-lora-gguf-bench</a></div>
 </main>

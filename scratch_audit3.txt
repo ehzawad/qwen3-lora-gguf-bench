@@ -1,0 +1,13 @@
+You are a NUMBERS AUDITOR + SKEPTIC. Verify the new report sections against raw data. Terse, concrete.
+
+Read REPORT.md sections "## 5. Engine Choice" and "## 10. Model choice at 4-bit", and report/engines.html + report/models.html. Cross-check every quoted number against the raw evidence:
+- Engine comparison: results/enginefair-20260721T062947Z/ (benchmark-*.json, SUMMARY.json)
+- Model scaling: results/modelscale-20260721T053813Z/ (single_stream.json, benchmark-*.json, provenance.json, SUMMARY.json)
+
+Check specifically:
+1. Do the tables match the JSON exactly? (engine tok/s at C=1/8/16/32/64 for llamacpp/sglang/vllm; model single-stream prefill/decode; model concurrency tok/s; VRAM at 64 slots; KV/token; bpw 4.97/5.03/5.90; params 4.02/8.95/4.65B.)
+2. Any OVERCLAIM or unsupported statement? Especially: is §5 correctly called iso-precision (bf16 both) while §10 correctly NOT iso (matched nominal Q4_K_M tier, bpw differs)? Is Qwen3.5-9B correctly called dense (not MoE)? Is Gemma correctly NOT called "a 2B model"? Is the "footprint decoupled from params" claim actually supported by the VRAM numbers? Is TTFT correctly flagged as captured only for the 4B?
+3. Any internal contradiction between REPORT.md and the HTML pages?
+4. Anything stated as fact that the data only weakly supports (e.g., the mechanism behind Gemma's speed, the "host-bound" attribution for llama.cpp's plateau)?
+
+Output: (A) CONFIRMED numbers that check out; (B) any DISCREPANCIES or OVERCLAIMS to fix, with exact location + correction; (C) verdict: is the writeup honest and defensible? Do not invent problems.

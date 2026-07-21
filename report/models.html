@@ -29,7 +29,7 @@
   <div class="hero-in">
     <div class="eyebrow">§10 · model scaling at a matched Q4_K_M tier · single A5000</div>
     <h1>Model choice at 4-bit: 4B vs 9B vs an "E2B"</h1>
-    <p class="lede">On the same 24 GB GPU, how do a <b>bigger</b> model (Qwen3.5-9B) and a <b>smaller efficiency</b> model (Gemma-4-E2B) compare to our 4B? The punchline: <b>serving footprint tracks attention geometry, not parameter count</b>.</p>
+    <p class="lede">On the same 24 GB GPU, how do a <b>bigger</b> model (Qwen3.5-9B) and a <b>smaller efficiency</b> model (Gemma-4-E2B) compare to our 4B? The punchline: <b>serving footprint tracks architecture, not parameter count</b> — the bigger model can need less VRAM.</p>
   </div>
 </div></header>
 
@@ -49,14 +49,14 @@
   </section>
 
   <section>
-    <h2>1 · Single-stream speed &mdash; inverse to size</h2>
+    <h2>1 · Single-stream speed &mdash; doesn't track size</h2>
     <div class="kpi">
       <div class="c"><div class="n gpu">160 <span style="font-size:14px;color:var(--muted)">tok/s</span></div><div class="l">Gemma-4-E2B decode (fastest)</div></div>
       <div class="c"><div class="n">147 <span style="font-size:14px;color:var(--muted)">tok/s</span></div><div class="l">Qwen3-4B decode</div></div>
       <div class="c"><div class="n cpu">82 <span style="font-size:14px;color:var(--muted)">tok/s</span></div><div class="l">Qwen3.5-9B decode (biggest)</div></div>
     </div>
     <div class="tbl"><table>
-      <caption>llama-bench, Q4_K_M, single sequence. Decode ranks inverse to total size.</caption>
+      <caption>llama-bench, Q4_K_M, single sequence. Decode does not track parameter count (Gemma is larger than the 4B, yet faster).</caption>
       <thead><tr><th>Model</th><th>Prefill pp512 (tok/s)</th><th>Decode tg128 (tok/s)</th></tr></thead>
       <tbody>
         <tr><td>Gemma-4-E2B</td><td class="gpu">7080</td><td class="gpu">160.5</td></tr>
@@ -64,21 +64,21 @@
         <tr><td>Qwen3.5-9B</td><td class="cpu">2834</td><td class="cpu">82.3</td></tr>
       </tbody>
     </table></div>
-    <p class="col"><b>Gemma leads even though its quant is the densest</b> (5.9 bpw) — its "E2B ≈ 2B effective" design means fewer params are active per token, and that shows up as real throughput. The dense 9.65B Qwen3.5 decodes at ~half the 4B's rate and prefills ~2× slower: the honest price of the bigger model.</p>
+    <p class="col"><b>Gemma leads even though its quant is the densest</b> (5.9 bpw) — its "E2B ≈ 2B effective" design is a <b>plausible</b> reason (fewer params active per token) — this benchmark shows the speed, not the mechanism in isolation. Qwen3.5-9B (8.95B served text weights) decodes at ~half the 4B's rate and prefills ~2× slower: the honest cost of the bigger model.</p>
   </section>
 
   <section>
-    <h2>2 · Footprint is decoupled from parameter count</h2>
+    <h2>2 · Parameter count does not predict footprint</h2>
     <div class="tbl"><table>
-      <caption>KV geometry (from each GGUF) + measured static VRAM with a 64-slot server (×1k ctx/slot). KV, not weights, dominates at concurrency.</caption>
-      <thead><tr><th>Model</th><th>KV heads</th><th>head_dim</th><th>Layers</th><th>f16 KV/token</th><th>Weights</th><th>VRAM @ 64 slots</th></tr></thead>
+      <caption>Measured static VRAM with a 64-slot server (ground truth) + the attention design from GGUF metadata.</caption>
+      <thead><tr><th>Model</th><th>Weights</th><th>Static VRAM @ 64 slots</th><th>Attention design</th></tr></thead>
       <tbody>
-        <tr><td>Gemma-4-E2B</td><td>1 (MQA)</td><td>512</td><td>35</td><td class="gpu">70 KiB</td><td>3.43 GB</td><td class="gpu">3.2 GB</td></tr>
-        <tr><td>Qwen3.5-9B</td><td>4</td><td>256</td><td>32</td><td>128 KiB</td><td>5.63 GB</td><td>10.9 GB</td></tr>
-        <tr><td>Qwen3-4B</td><td>8</td><td>128</td><td>36</td><td class="cpu">144 KiB</td><td>2.50 GB</td><td class="cpu">12.2 GB</td></tr>
+        <tr><td>Gemma-4-E2B</td><td>3.43 GB</td><td class="gpu">3,224 MiB (3.15 GiB)</td><td>sliding-window 512 + 20 shared-KV layers, MQA</td></tr>
+        <tr><td>Qwen3.5-9B</td><td>5.63 GB</td><td>10,942 MiB (10.69 GiB)</td><td><b>hybrid</b>: full attn every 4th layer (8/32) + 24 SSM/recurrent</td></tr>
+        <tr><td>Qwen3-4B</td><td>2.50 GB</td><td class="cpu">12,208 MiB (11.92 GiB)</td><td>uniform GQA → 144 KiB/token</td></tr>
       </tbody>
     </table></div>
-    <div class="callout"><span class="lab">The counterintuitive result</span>The <b>9.65B model needs LESS VRAM at 64 slots than our 4B</b> (10.9 vs 12.2 GB) — its aggressive GQA (4 KV heads) + fewer layers give it a <em>smaller</em> KV/token than the 4B's 8-head config. <b>Gemma is leanest by far</b> (3.2 GB for the whole 64-slot server): extreme MQA (1 KV head) + sliding-window attention keep KV tiny. <b>Model size does not predict serving footprint — attention geometry does.</b></div>
+    <div class="callout"><span class="lab">The counterintuitive result</span>The <b>8.95B-text Qwen3.5-9B uses LESS VRAM at 64 slots than our 4B</b> (10.69 vs 11.92 GiB) — but <em>not</em> from GQA as I first guessed: its metadata shows a <b>hybrid design</b> where only 8 of 32 layers do full attention and the rest are <b>SSM/recurrent</b> (fixed per-sequence state, not per-token KV). <b>Gemma is leanest</b> (3.15 GiB): mostly <b>sliding-window</b> attention with <b>KV shared across 20 layers</b> + MQA, so KV barely grows with context. Only the 4B's 144 KiB/token fits the simple formula. <b>Parameter count didn't predict VRAM here — modern KV-saving architectures (recurrent, sliding-window, shared-KV) did.</b></div>
   </section>
 
   <section>
@@ -99,7 +99,7 @@
         <tr><td>64</td><td class="gpu">650</td><td>639</td><td class="cpu">302</td></tr>
       </tbody>
     </table></div>
-    <p class="col">Gemma and the 4B track each other closely; <b>Qwen3.5-9B runs at ~45–50% of their throughput</b> throughout — a consistent, size-driven gap. On one A5000 you either serve the fast small/efficient models at high concurrency, or the bigger 9.65B model at roughly half the aggregate rate. A direct <b>capability-for-throughput trade you now have numbers for</b>.</p>
+    <p class="col">Gemma and the 4B track each other closely; <b>Qwen3.5-9B runs at ~45–50% of their throughput</b> throughout — a consistent gap (combining its larger served-weight size, hybrid architecture, quant recipe, and kernels — not size alone). On one A5000 you either serve the fast small/efficient models at high concurrency, or the bigger Qwen3.5-9B at roughly half the aggregate rate — a direct <b>model-choice/throughput trade</b> you now have numbers for (this measured <em>throughput</em>, not capability/quality).</p>
     <div class="callout bad"><span class="lab">Caveats</span>The <b>bpw differences</b> (Gemma 5.9 vs ~5.0) make this a matched-<em>tier</em>, not equal-precision, comparison. <b>TTFT was captured only for the 4B</b> (a streaming-format quirk left Qwen3.5/Gemma TTFT unrecorded — throughput/VRAM unaffected). All runs are <b>llama.cpp only</b>: vLLM 0.11.0 predates <code>qwen35</code>/<code>gemma4</code>, so a multi-engine take on the new models is a separate follow-up. Text-only, one GPU, one quant tier.</div>
   </section>
 

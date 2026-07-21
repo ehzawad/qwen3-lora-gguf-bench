@@ -234,19 +234,19 @@ Prefill uplift: Q4 +15.6%, Q5 +18.9%, Q6 +16.7%, Q8 +21.0%, BF16 +16.7%. Decode 
 | **TTFT p50 @ C=64** | 0.98 s | 1.06 s | **0.60 s** |
 | **TTFT p99 @ C=64** | 3.78 s | 1.85 s | **2.23 s** |
 
-**The finding is unambiguous and matches the theory:**
+**The finding is clear:**
 
-1. **At C=1 (single stream) they essentially tie** — llama.cpp 61 ≈ vLLM 68 > SGLang 35. llama.cpp is fully competitive for one user, and SGLang's scheduler carries per-request overhead that only pays off under load.
-2. **As concurrency rises, vLLM and SGLang pull away hard.** By **C=64, vLLM (1763) and SGLang (1647) are ~4× llama.cpp (421)** — and vLLM/SGLang are still climbing near-linearly while **llama.cpp plateaus and goes noisy/host-bound** (382→381→268→421), the same wall Section 3 diagnosed. PagedAttention (vLLM) and RadixAttention (SGLang) + purpose-built continuous batching are simply better at packing many concurrent decodes.
-3. **vLLM has the best latency under load** (TTFT p50 0.60 s at C=64 vs llama.cpp 0.98 / p99 3.78), with SGLang close behind.
+1. **At C=1, llama.cpp and vLLM are close** (61 ≈ 68 tok/s) while **SGLang is ~half** (35) — its scheduler carries per-request overhead that only pays off under load. So "they tie" is really *llama.cpp ≈ vLLM* at one user.
+2. **As concurrency rises, vLLM and SGLang pull away hard.** By **C=64, vLLM (1763) and SGLang (1647) are ~4× llama.cpp (421)**. SGLang scales the most steeply (6.4× throughput from C=8→64 vs vLLM's 3.7×), while **llama.cpp's curve goes flat/noisy** (382→381→268→421) — **consistent with the host-side wall Section 3 diagnosed**, though this run did *not* re-capture server-CPU telemetry, so I call it "flat, consistent with host-bound," not a fresh proof. PagedAttention (vLLM) and RadixAttention (SGLang) are *designed* to pack many concurrent decodes; the mechanism isn't isolated here.
+3. **vLLM has the best TTFT p50 under load** (0.60 s at C=64), while **SGLang has the best p99** (1.85 s vs vLLM 2.23, llama.cpp 3.78) — so "lowest latency" depends on which tail you weigh.
 
 **The honest tradeoffs (this is a "which for what," not a "winner"):**
 
-- **llama.cpp** — best-in-class *setup simplicity* (one static binary, GGUF, runs on CPU/Metal/mixed, trivial to deploy), competitive at **low concurrency**, and the widest quant/hardware reach. It preallocates KV per slot (higher memory floor: this bf16/np=100 server sat at ~18 GiB) and hits a host-bound throughput wall well before the GPU saturates.
+- **llama.cpp** — best-in-class *setup simplicity* (one static binary, GGUF, runs on CPU/Metal/mixed, trivial to deploy), competitive at **low concurrency**, and the widest quant/hardware reach. It preallocates KV per slot (higher memory floor: this bf16/np=100 server sat at ~18 GiB) and its throughput flattens well before the GPU saturates (consistent with the §3 host-side diagnosis).
 - **vLLM** — the throughput/latency winner for **many concurrent users**, with paged (non-preallocated) KV that packs memory efficiently. Cost: a heavier, version-sensitive Python/CUDA stack (as the VOID episode showed) and slower to support brand-new architectures (§10).
 - **SGLang** — scales like vLLM at high concurrency (RadixAttention shines with shared prefixes, which we *disabled* here — so its real-world multi-turn edge is understated), but **slowest at C=1**. Similar deployment weight to vLLM.
 
-**Caveats you must keep attached:** (a) this is **bf16 for all three** — *not* each engine's optimal config; llama.cpp's low-bit GGUF path and vLLM's AWQ/FP8 paths would each shift their own curves (a matched-4-bit engine follow-up is separate). (b) **Prefix caching is off** — turning it on helps all three and especially SGLang/vLLM for shared-prefix multi-turn (§9.3). (c) **Fixed-server, vary-client** (realistic serving) — not per-C re-provisioning, so C=1 runs with many idle slots. (d) One 4B model, one A5000, ~240-tok prompts / 256 gen. **No claim that any engine is "inherently" fastest** — results combine scheduler, KV design, kernels, and this workload.
+**Caveats you must keep attached:** (a) this is **bf16 weights for all three** — *not* each engine's optimal config; llama.cpp's low-bit GGUF path and vLLM's AWQ/FP8 paths would each shift their own curves (a matched-4-bit engine follow-up is separate). (b) **Prefix caching is off** — turning it on helps all three and especially SGLang/vLLM for shared-prefix multi-turn (§9.3). (c) **Iso-*precision*, not iso-*configuration*:** SGLang ran with **CUDA graphs disabled** (for startup robustness) while vLLM used them — so SGLang is somewhat *handicapped* here; its true numbers would likely be higher. (d) **Fixed-server, vary-client** (realistic serving) — not per-C re-provisioning, so C=1 runs with many idle slots. (e) One 4B model, one A5000, **~231–253-tok prompts / exactly 256 gen**. **No claim that any engine is "inherently" fastest** — results combine scheduler, KV design, kernels, config, and this workload.
 
 ---
 
@@ -336,14 +336,13 @@ GGUF, CPU/GPU hybrid, excellent *single-user* latency, trivial deployment.
 
 > **The nuance our own data adds:** those dramatic gaps are **highly
 > config-dependent.** Our `-cb`, `--parallel == C` llama.cpp did **not** show
-> 180 s TTFT — p99 TTFT was ~7.5 s at C=128 and it batched fine. But it *did* hit
-> a host-bound wall (peak ~800 tok/s at C=64, then decline). vLLM's
-> continuous-batching scheduler and PagedAttention KV management are **designed to
-> improve high-concurrency serving** — but **whether vLLM would push past *this
-> rig's* observed wall is unmeasured** (it crashed at warmup, §5). So: a
-> well-tuned llama.cpp is far better than the naïve "44× / 180 s" figure suggests,
-> the architectural case for vLLM at high concurrency is plausible, and we state
-> **no measured vLLM result and no engine winner.**
+> 180 s TTFT — p99 TTFT was ~7.5 s at C=128 and it batched fine. But its throughput
+> flattens at concurrency (consistent with the §3 host-side wall). **§5 now measures
+> the comparison directly** (matched bf16): at C=1 llama.cpp ≈ vLLM; by C=64 vLLM and
+> SGLang are **~4× llama.cpp** — the architectural case for their schedulers holds on
+> *this* rig too. So: a well-tuned llama.cpp is far better than the naïve "44× / 180 s"
+> figure suggests at low concurrency, but for many concurrent users vLLM/SGLang win
+> here — with the §5 caveats (bf16, prefix-cache off, one model, not iso-config).
 
 **Chatbot lens — when to use which:** production multi-user chatbot API on a GPU
 → **vLLM** (or SGLang/TGI), especially with **native multi-LoRA** serving (many
@@ -542,19 +541,21 @@ Everything up to here served *one* model. This section flips the question: on th
 | Qwen3-4B (ours) | 6085 | 146.7 |
 | Qwen3.5-9B | 2834 | 82.3 |
 
-Decode ranks **Gemma > 4B > Qwen3.5-9B** — *inverse* to total size, and Gemma leads even though its quant is the densest. The "E2B ≈ 2B effective" design shows up as real throughput (fewer params active per token). The dense 9.65B Qwen3.5 decodes at ~half the 4B's rate and prefills ~2× slower (more compute per token) — the price of the bigger model.
+Decode ranks **Gemma > 4B > Qwen3.5-9B** — which **does not track parameter count** (Gemma's 4.65B GGUF is *larger* than the 4B's 4.02B, yet decodes faster), and Gemma leads even though its quant is the densest. Its "E2B ≈ 2B effective" design is a **plausible** contributor (fewer params active per token) — this benchmark shows the speed, not the mechanism in isolation. Qwen3.5-9B (8.95B served text weights) decodes at ~half the 4B's rate and prefills ~2× slower: the honest cost of the bigger model.
 
-### 10.2 Memory footprint is decoupled from parameter count
+### 10.2 Parameter count does not predict serving footprint
 
-KV-cache geometry (verified from each GGUF), and measured static VRAM with a 64-slot server:
+The **measured** static VRAM with a 64-slot server (weights + all KV/state allocation) — this is the ground truth:
 
-| Model | KV heads | head_dim | Layers | **f16 KV/token** | Weights (Q4_K_M) | **VRAM @ 64 slots ×1k ctx** |
-|---|---|---|---|---|---|---|
-| Gemma-4-E2B | 1 (MQA) | 512 | 35 | **70 KiB** | 3.43 GB | **3.2 GB** |
-| Qwen3.5-9B | 4 | 256 | 32 | **128 KiB** | 5.63 GB | **10.9 GB** |
-| Qwen3-4B | 8 | 128 | 36 | **144 KiB** | 2.50 GB | **12.2 GB** |
+| Model | Weights (Q4_K_M) | **Static VRAM @ 64 slots ×1k ctx** | Attention design (from GGUF metadata) |
+|---|---|---|---|
+| Gemma-4-E2B | 3.43 GB | **3,224 MiB (3.15 GiB)** | sliding-window (512) + 20 shared-KV layers, MQA — KV window-capped & shared |
+| Qwen3.5-9B | 5.63 GB | **10,942 MiB (10.69 GiB)** | **hybrid**: full attention only every 4th layer (8 of 32) + 24 SSM/recurrent layers |
+| Qwen3-4B | 2.50 GB | **12,208 MiB (11.92 GiB)** | uniform GQA (8 KV heads, head_dim 128, 36 layers) → **144 KiB/token** |
 
-The counterintuitive result: **the 9.65B model has a *smaller* whole-server footprint than our 4B** (10.9 vs 12.2 GiB at 64 slots), because its aggressive GQA (4 KV heads) + fewer layers give it **less KV/token** than the 4B's 8-head config — and KV, not weights, dominates at concurrency. **Gemma is leanest by far** (3.2 GB for the whole 64-slot server): extreme MQA (1 KV head) plus sliding-window attention keep KV allocation tiny. **Model size does not predict serving footprint — attention geometry does.**
+The counterintuitive result: **the 8.95B-text Qwen3.5-9B uses *less* VRAM at 64 slots than our 4B** (10.69 vs 11.92 GiB). But *not* for the reason I first guessed (naive GQA): the metadata shows Qwen3.5 is a **hybrid linear-attention model** — only **8 of its 32 layers do full attention** (`full_attention_interval=4`), the other 24 are **SSM/recurrent** layers whose state is a *fixed per-sequence* cost, not per-token KV. So its per-token attention KV is small (~32 KiB from 8 layers) even though it's the bigger model. **Gemma is leanest by far** (3.15 GiB whole server): most of its layers are **sliding-window** (capped at 512 tokens) with **KV shared across 20 layers** and MQA, so KV barely grows with context.
+
+Only the 4B's clean **144 KiB/token** comes from the simple heads×head_dim×layers formula — the two newer models use **KV-reducing architectures** (linear/recurrent attention, sliding windows, KV sharing) where that formula does *not* apply. **The lesson stands but the mechanism is richer than "attention geometry":** parameter count alone did not predict VRAM here; modern KV-saving designs did. (These are boot-time allocations for this 64×1k config; I did not isolate weights-vs-KV-vs-recurrent-state per model.)
 
 ### 10.3 Concurrency throughput (Q4_K_M, fixed 64-slot server, prefix-cache off)
 
@@ -568,7 +569,7 @@ Aggregate output tok/s (0 failures at every point; ~256-token generations):
 | 32 | 560 | 568 | 268 |
 | 64 | **650** | **639** | **302** |
 
-Gemma and the 4B track each other closely and are still climbing at C=64; Qwen3.5-9B runs at ~**45–50%** of their throughput throughout — a consistent, size-driven gap. So on one A5000 you can either serve the **fast small/efficient models at high concurrency**, or the **bigger 9.65B model at roughly half the aggregate rate** — a direct capability-for-throughput trade you now have numbers for.
+Gemma and the 4B track each other closely and are still climbing at C=64; Qwen3.5-9B runs at ~**45–50%** of their throughput throughout — a consistent gap (which combines its larger served-weight size, hybrid architecture, quant recipe, and kernels — not size alone). So on one A5000 you can either serve the **fast small/efficient models at high concurrency**, or the **bigger Qwen3.5-9B at roughly half the aggregate rate** — a direct **model-choice/throughput trade** you now have numbers for (this measured *throughput*, not capability/quality).
 
 **Section caveats:** (a) the **bpw differences above** (Gemma 5.90 vs ~5.0) mean this is a *matched-tier*, not equal-precision, comparison. (b) **TTFT was only captured for the 4B** — a streaming-format quirk left Qwen3.5/Gemma TTFT unrecorded, so latency-under-load isn't compared here (throughput/VRAM are unaffected, being computed from token counts). (c) All single-stream and concurrency runs are the **same llama.cpp binary** — **vLLM/SGLang were *not* used for the new models**: vLLM 0.11.0 predates `qwen35`/`gemma4` support, and chasing a newer vLLM for two week-old architectures is a separate follow-up, not this study. (d) Text-only, one GPU, one quant tier.
 
