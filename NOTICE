@@ -25,5 +25,14 @@ Inference engine:
   Revision: 91d2fc387529940230555abd297a8b5e99737d3f
   Upstream license: MIT
 
+Evaluation datasets (downloaded locally by scripts/prepare_data.py; NOT
+redistributed in this repository):
+  Salesforce/wikitext (wikitext-2-raw-v1) — for llama-perplexity accuracy.
+  HuggingFaceH4/ultrachat_200k — multi-turn conversations for the context-window
+    replay. License: MIT (upstream UltraChat, Copyright (c) 2023 THUNLP,
+    Ding et al.). UltraChat dialogues are synthetically generated, not human
+    chat traffic; the 8k/16k/32k inputs are COMPOSITE sessions assembled from
+    these transcripts, not single natural conversations.
+
 No affiliation with or endorsement by the upstream authors is implied.
 The legal-operations adapter is not legal advice.

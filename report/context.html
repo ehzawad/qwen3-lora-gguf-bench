@@ -1,0 +1,173 @@
+<title>Context Window, Concurrency & the Accuracy↔Speed Tradeoff</title>
+<style>
+  :root{--ground:#f5f7fa;--panel:#fff;--ink:#171b24;--muted:#5a6474;--faint:#8b95a6;--line:#dde3ec;--gpu:#17998a;--gpu-soft:#d3ece8;--cpu:#c67e12;--cpu-soft:#f6e6c9;--bad:#c8443a;--shadow:0 1px 2px rgba(20,30,50,.06),0 8px 30px rgba(20,30,50,.06);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--serif:Georgia,"Iowan Old Style",serif}
+  @media(prefers-color-scheme:dark){:root{--ground:#0b0e14;--panel:#12161f;--ink:#e6e9f0;--muted:#9aa4b6;--faint:#6b7688;--line:#232a37;--gpu:#2fc7b3;--gpu-soft:#123330;--cpu:#e8a83e;--cpu-soft:#33270f;--bad:#e5675c;--shadow:0 1px 2px rgba(0,0,0,.4),0 10px 34px rgba(0,0,0,.35)}}
+  :root[data-theme="light"]{--ground:#f5f7fa;--panel:#fff;--ink:#171b24;--muted:#5a6474;--faint:#8b95a6;--line:#dde3ec;--gpu:#17998a;--gpu-soft:#d3ece8;--cpu:#c67e12;--cpu-soft:#f6e6c9}
+  :root[data-theme="dark"]{--ground:#0b0e14;--panel:#12161f;--ink:#e6e9f0;--muted:#9aa4b6;--faint:#6b7688;--line:#232a37;--gpu:#2fc7b3;--gpu-soft:#123330;--cpu:#e8a83e;--cpu-soft:#33270f}
+  *{box-sizing:border-box}body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--serif);font-size:18px;line-height:1.62;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}.col{max-width:68ch}a{color:var(--gpu)}
+  h1,h2,h3{font-family:var(--sans);line-height:1.15;text-wrap:balance;letter-spacing:-.015em}code,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .eyebrow{font-family:var(--sans);text-transform:uppercase;letter-spacing:.14em;font-size:12px;font-weight:650;color:var(--faint)}
+  .nav{font-family:var(--sans);font-size:13px;display:flex;gap:14px;flex-wrap:wrap;padding:16px 0;border-bottom:1px solid var(--line)}.nav a{color:var(--muted);text-decoration:none}.nav a.on{color:var(--gpu);font-weight:650}
+  header.hero{border-bottom:1px solid var(--line);background:radial-gradient(120% 140% at 100% -20%,var(--gpu-soft) 0,transparent 55%),radial-gradient(120% 140% at 0 -10%,var(--cpu-soft) 0,transparent 50%)}
+  .hero-in{padding:48px 0 34px}h1{font-size:clamp(27px,4.4vw,42px);font-weight:780;margin:12px 0 8px}.lede{font-size:19px;color:var(--muted);max-width:64ch;margin:0}
+  section{padding:38px 0;border-bottom:1px solid var(--line)}h2{font-size:clamp(22px,3vw,28px);font-weight:720;margin:0 0 14px}h3{font-family:var(--sans);font-size:17px;margin:24px 0 6px}.col p{margin:13px 0}
+  .tbl{overflow-x:auto;margin:20px 0;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:var(--shadow)}table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+  caption{text-align:left;font-family:var(--sans);font-size:13px;color:var(--muted);padding:12px 16px 0}th,td{padding:7px 13px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}
+  thead th{font-family:var(--sans);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:650}tbody tr:last-child td{border-bottom:none}
+  td.gpu{color:var(--gpu);font-weight:650}td.cpu{color:var(--cpu);font-weight:650}td.bad{color:var(--bad);font-weight:650}
+  .callout{border-left:3px solid var(--gpu);background:var(--panel);border-radius:0 12px 12px 0;padding:14px 18px;margin:20px 0;font-size:16.5px;box-shadow:var(--shadow)}.callout.warn{border-color:var(--cpu)}.callout.bad{border-color:var(--bad)}.callout .lab{font-family:var(--sans);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);display:block;margin-bottom:4px}
+  .fig{margin:22px 0;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:var(--shadow);padding:18px 18px 10px}.fig .cap{font-family:var(--sans);font-size:12.5px;color:var(--muted);margin:8px 2px 0}
+  .lg{font-family:var(--sans);font-size:12px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap;margin:2px 0 0}.lg i{width:11px;height:11px;border-radius:2px;display:inline-block;vertical-align:middle;margin-right:5px}
+  .foot{padding:34px 0 64px;color:var(--muted);font-size:15px}.foot a{font-family:var(--mono);font-size:14px}
+  .kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:22px 0}
+  .kpi .c{border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:var(--shadow);padding:14px 16px}.kpi .n{font-family:var(--sans);font-weight:780;font-size:26px;letter-spacing:-.02em}.kpi .l{font-family:var(--sans);font-size:12.5px;color:var(--muted);margin-top:2px}
+</style>
+
+<header class="hero"><div class="wrap">
+  <div class="nav"><a href="index.html">◂ Field guide</a><a href="concurrency.html">Concurrency</a><a href="context.html" class="on">Context &amp; accuracy</a><a href="precision.html">Precision</a><a href="engines.html">Engines &amp; chatbot</a><a href="lora.html">LoRA &amp; SVD</a><a href="locust.html">Locust</a></div>
+  <div class="hero-in">
+    <div class="eyebrow">Studies E6 / E7 / §9 · context · KV frontier · multi-turn · perplexity</div>
+    <h1>Context window, concurrency &amp; the accuracy↔speed tradeoff</h1>
+    <p class="lede">Open the context window and keep sessions resident and the whole story <b>inverts</b>: the short-chat regime was compute/host-bound, this one is <span style="color:var(--gpu);font-weight:650">VRAM-bound</span>. Capacity is now set by KV bytes, and every deep token decodes slower.</p>
+  </div>
+</div></header>
+
+<main class="wrap">
+
+  <section>
+    <h2>1 · Context window <em>is</em> the VRAM constraint</h2>
+    <p class="col">The KV cache is linear in tokens, and on this A5000 the per-token cost is <b>measured, not guessed</b> — derived straight from the boot-allocation frontier: <code>(22226−4916) MiB ÷ (30720×4 tok) = 144.25 KiB/token</code> for f16. Note q8_0 KV lands at <b>53%</b> of f16 (76.5 KiB/tok), <em>not</em> a clean half — 8-bit KV still carries per-block scale overhead. You don't get a free doubling.</p>
+    <div class="kpi">
+      <div class="c"><div class="n">3.07 <span style="font-size:15px;color:var(--muted)">GiB</span></div><div class="l">Q6_K weights (fixed)</div></div>
+      <div class="c"><div class="n gpu">144.25 <span style="font-size:15px;color:var(--muted)">KiB/tok</span></div><div class="l">f16 KV (measured)</div></div>
+      <div class="c"><div class="n cpu">76.5 <span style="font-size:15px;color:var(--muted)">KiB/tok</span></div><div class="l">q8_0 KV = 53% of f16</div></div>
+      <div class="c"><div class="n">24,564 <span style="font-size:15px;color:var(--muted)">MiB</span></div><div class="l">whole board</div></div>
+    </div>
+    <p class="col">Multiply per-token cost by (slots × context length) and you get the binding constraint. This is the measured <b>fit frontier</b> — a <em>static server-boot allocation test</em>: it proves the KV reservation doesn't <code>cudaMalloc</code>-OOM at boot. It does <b>not</b> promise acceptable latency at that slot count (see §2).</p>
+    <div class="tbl"><table>
+      <caption>Max concurrent slots that <b>boot</b> without OOM. Brackets are coarse (fit / OOM); the true ceiling sits inside each bracket.</caption>
+      <thead><tr><th>Depth / slot</th><th>f16 — fit</th><th>f16 — OOM</th><th>q8_0 — fit</th><th>q8_0 — OOM</th></tr></thead>
+      <tbody>
+        <tr><td>8k</td><td class="gpu">16 <span style="color:var(--muted);font-weight:400">(22202 MiB)</span></td><td>20</td><td class="cpu">30 <span style="color:var(--muted);font-weight:400">(23044 MiB)</span></td><td>40</td></tr>
+        <tr><td>16k</td><td class="gpu">8 <span style="color:var(--muted);font-weight:400">(22210 MiB)</span></td><td>12</td><td>— <span style="color:var(--muted);font-weight:400">(&lt;16)</span></td><td class="bad">16</td></tr>
+        <tr><td>32k</td><td class="gpu">4 <span style="color:var(--muted);font-weight:400">(22226 MiB)</span></td><td>6</td><td>— <span style="color:var(--muted);font-weight:400">(&lt;8)</span></td><td class="bad">8</td></tr>
+      </tbody>
+    </table></div>
+    <p class="col"><b>Can I serve 30 or 100 users?</b> — where <em>users = KV-resident dedicated slots held in VRAM at once</em>, not independently-arriving clients:</p>
+    <div class="tbl"><table>
+      <caption>Direct answer. ✅ = boots &amp; fits; ❌ = out of memory.</caption>
+      <thead><tr><th>Resident users</th><th>8k</th><th>16k</th><th>32k</th></tr></thead>
+      <tbody>
+        <tr><td>30</td><td class="gpu">✅ only q8_0 KV <span style="color:var(--muted);font-weight:400">(edge, 22.5 GB); f16 needs ≤4k</span></td><td class="bad">❌</td><td class="bad">❌</td></tr>
+        <tr><td>100</td><td class="bad">❌</td><td class="bad">❌</td><td class="bad">❌</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout"><span class="lab">The flip</span>This is the <b>exact opposite</b> of the <a href="concurrency.html">short-chat finding</a>, where 768-token sessions were tiny and you could pack C=64+ before the <em>host</em> became the bottleneck. Here each session is huge, so VRAM binds first — and it binds hard.</div>
+  </section>
+
+  <section>
+    <h2>2 · Depth taxes every token (fitting ≠ fast)</h2>
+    <p class="col">A slot count that "fits" can still be too slow. Independent of concurrency, deeper KV slows a <b>single stream</b> monotonically. These are single-sequence <code>llama-bench</code> figures (tg64 decode) — how depth taxes <em>one</em> request, not per-slot throughput under load.</p>
+    <div class="fig">
+      <svg viewBox="0 0 720 260" width="100%" role="img" aria-label="Decode tok/s versus KV depth for f16 and q8_0">
+        <g id="depthchart"></g>
+      </svg>
+      <div class="lg"><span><i style="background:var(--gpu)"></i>f16 KV</span><span><i style="background:var(--cpu)"></i>q8_0 KV</span></div>
+      <div class="cap">Decode tok/s vs context depth. f16 loses ~47% by 32k (1.87×); q8_0's dequant-during-attention penalty <b>grows with depth</b> — 95% → 70% of f16 (2.54× d0→32k).</div>
+    </div>
+    <div class="tbl"><table>
+      <caption>Single-sequence decode. q8_0 buys capacity but costs the most speed exactly where context is deepest.</caption>
+      <thead><tr><th>Depth</th><th>f16 decode tok/s</th><th>q8_0 decode tok/s</th><th>q8_0 as % of f16</th></tr></thead>
+      <tbody>
+        <tr><td>0</td><td class="gpu">110.2</td><td>104.7</td><td>94.9%</td></tr>
+        <tr><td>8k</td><td class="gpu">89.0</td><td>76.0</td><td>85.4%</td></tr>
+        <tr><td>32k</td><td class="gpu">59.0</td><td class="cpu">41.2</td><td class="bad">69.8%</td></tr>
+      </tbody>
+    </table></div>
+    <p class="col">Now put depth <em>and</em> concurrency together — the flagship result. <b>30 users each at 8k with q8_0 KV is feasible-but-slow</b>:</p>
+    <div class="tbl"><table>
+      <caption>Concurrent multi-turn, fully-backlogged (closed-loop). Per-user throughput is the number that hurts.</caption>
+      <thead><tr><th>Config</th><th>slots</th><th>agg tok/s</th><th>fair-share (agg/C)</th><th>median per-req decode</th><th>TTFT p50 / p95 / max</th><th>turns ok</th></tr></thead>
+      <tbody>
+        <tr><td>30×8k, q8_0 KV</td><td>30</td><td>113.5</td><td class="bad">3.78</td><td class="bad">5.7</td><td>0.45 / 53.7 / 62.7 s</td><td>87/90</td></tr>
+        <tr><td>16×8k, f16 KV</td><td>16</td><td>135.0</td><td class="gpu">8.44</td><td>13.2</td><td>0.26 / 25.5 / 29.4 s</td><td>45/48</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout warn"><span class="lab">Read this carefully</span>q8_0 nearly doubled resident slots (16→30) at similar VRAM, but aggregate throughput barely moved (135→113) while <b>fair-share halved</b> — a pure latency-for-capacity trade. <b>"3.78" is fair-share (agg/30), not a measured per-request rate</b>; the measured median per-request decode was <b>5.7 tok/s</b> — still below comfortable reading speed. And the run was <b>not clean</b>: 3 of 90 follow-up turns grew past 8192 tokens and were rejected, so this proves <em>memory</em> feasibility, not that every session stays in-window. The brutal p95/max TTFT is a <em>zero-think-time closed loop</em> (every slot always has a request queued) — no arrival process, so it does <b>not</b> estimate open-loop production latency. 100 residents blow the KV budget outright. <b>Note:</b> q8_0 KV's <em>accuracy</em> cost is unmeasured here — §4's perplexity sweep quantized the weights, not the KV cache.</div>
+  </section>
+
+  <section>
+    <h2>3 · Prefix caching flips the TTFT trend</h2>
+    <p class="col">If you take one operational lever from this page, take this. With prefix caching <b>on</b>, deeper history <em>raises</em> the cache-hit rate and <em>lowers</em> TTFT; with it <b>off</b>, every turn reprocesses the whole prompt and TTFT climbs. Decode rate is untouched (~99–104 tok/s either way) — caching is purely a prefill/TTFT effect. Measured over 150 scripted-user turns (model generates the replies) replaying individual UltraChat conversations at server ctx 32768:</p>
+    <div class="tbl"><table>
+      <caption>The trends genuinely <b>cross</b>: ON falls as history grows, OFF rises.</caption>
+      <thead><tr><th>Depth bucket</th><th>cache ON — hit</th><th>ON — TTFT median</th><th>cache OFF — hit</th><th>OFF — TTFT median</th></tr></thead>
+      <tbody>
+        <tr><td>0–1k</td><td>0.322</td><td class="gpu">136.9 ms</td><td>0.0</td><td>205.5 ms</td></tr>
+        <tr><td>1–2k</td><td>0.746</td><td class="gpu">109.9 ms</td><td>0.0</td><td>346.5 ms</td></tr>
+        <tr><td>2–4k</td><td>0.949</td><td class="gpu">74.7 ms</td><td>0.0</td><td class="cpu">505.2 ms</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout"><span class="lab">The multi-turn must-have</span>At 2–4k depth, prefix caching cuts TTFT <b>~6.8×</b> (505 → 75 ms). ON falls 137→75 ms as history grows; OFF rises 205→505 ms. For any multi-turn deployment this is non-optional — turning it off makes conversations get slower the longer they run. <span style="color:var(--muted)">(Deep buckets have n=2; indicative, not robust.)</span></div>
+  </section>
+
+  <section>
+    <h2>4 · The accuracy↔speed tradeoff — measured</h2>
+    <p class="col">This time accuracy is <b>measured</b>, not borrowed. All five runs are the <em>same merged model</em> at different GGUF precisions, scored on <b>all 583 disjoint 512-token chunks</b> of the wikitext-2-raw test using llama-perplexity's <b>default half-window scoring</b> (each chunk scores its second 256 tokens — <em>not</em> strided sliding-window; no <code>--ppl-stride</code>), paired with E4 decode tok/s on the same A5000.</p>
+    <div class="tbl"><table>
+      <caption>Wikitext perplexity (±1σ run-level uncertainty) vs decode speed. Every quant carries its own ~±0.076 error, larger than the gaps between the top three.</caption>
+      <thead><tr><th>Quant</th><th>Wikitext PPL (±1σ)</th><th>ΔPPL vs bf16</th><th>decode tok/s</th><th>speedup</th><th>file size</th></tr></thead>
+      <tbody>
+        <tr><td>bf16</td><td>9.9705 ±0.0765</td><td>0 (reference)</td><td>77.0</td><td>1.00×</td><td>7.49 GiB</td></tr>
+        <tr><td>Q8_0</td><td>9.9691 ±0.0764</td><td class="gpu">−0.014%</td><td>125.4</td><td>1.63×</td><td>3.98 GiB</td></tr>
+        <tr><td>Q6_K</td><td>9.9695 ±0.0761</td><td class="gpu">−0.010%</td><td>133.3</td><td>1.73×</td><td>3.07 GiB</td></tr>
+        <tr><td>Q5_K_M</td><td>10.1205 ±0.0779</td><td class="cpu">+1.50%</td><td>155.2</td><td>2.02×</td><td>2.69 GiB</td></tr>
+        <tr><td>Q4_K_M</td><td>10.2122 ±0.0780</td><td class="cpu">+2.42%</td><td class="gpu">168.0</td><td>2.18×</td><td>2.32 GiB</td></tr>
+      </tbody>
+    </table></div>
+    <p class="col"><b>Speed rises monotonically as bits drop</b> (77→168 tok/s). PPL does <em>not</em>: the point estimates are <b>practically flat through Q6_K</b> (bf16/Q8/Q6 within 0.014% of each other, each carrying ~±0.076 run-level uncertainty — bigger than the gaps), then <b>rise clearly at Q5 (+1.50%) and Q4 (+2.42%)</b>. Because every model scored <em>identical</em> text, a real significance test needs a paired per-chunk loss-difference analysis, which we <b>did not compute</b> — so this is <em>not</em> a formal "within-noise" or "lossless" claim. Honestly: Q6_K/Q8_0 are <b>practically indistinguishable from bf16 on this corpus</b> (≤0.014% delta), so <b>Q6_K is the sensible default</b>; <b>Q4_K_M costs +2.42% PPL to buy 2.18× decode</b> (and its small file leaves more room for KV — the real bottleneck per §1).</p>
+    <div class="callout bad"><span class="lab">Before you quote these</span>This is <b>general-domain next-token likelihood on wikitext, not legal-task accuracy</b> — lower PPL here does <em>not</em> certify contract-intake quality. The bf16 GGUF is a same-precision reference (ΔPPL ≡ 0 by definition), <b>not lossless ground truth</b> vs the original adapter model. "+2.42% PPL" is <b>not</b> "Q4 loses 2.4% quality" and says nothing about LoRA fidelity.</div>
+  </section>
+
+  <section>
+    <h2>Which LoRA</h2>
+    <p class="col">Every number on this page is one model: <code>narcolepticchicken/qwen3-4b-legal-ops-contract-intake-lora</code> (Qwen3-4B, LoRA <b>rank 16 / alpha 32</b>), <b>merged into the base weights</b> before GGUF export. So there is no adapter-swap or separate-adapter overhead in any measurement — a single merged checkpoint at five precisions, and the KV/context frontier is set by the 4B base geometry, not by the adapter.</p>
+  </section>
+
+  <div class="col foot">Raw data: <code>results/context-20260721T023727Z/</code> (frontier + depth), <code>results/accuracy-full-20260721T025541Z/</code> (perplexity), <code>results/ctxchat-20260721T030352Z/</code> (concurrent + single-user), <code>results/chatbot-20260721T024328Z/</code> (cache A/B). Full write-up: §9 of the <a href="index.html">field guide</a>.<br><a href="https://github.com/ehzawad/qwen3-lora-gguf-bench">github.com/ehzawad/qwen3-lora-gguf-bench</a></div>
+</main>
+
+<script>
+(function(){
+  // Decode-vs-depth line chart (f16 vs q8_0), drawn to match the suite's SVG style.
+  var g=document.getElementById('depthchart');if(!g)return;
+  var NS='http://www.w3.org/2000/svg';
+  var W=720,H=260,L=52,R=18,T=18,B=38, x0=L,x1=W-R,y0=H-B,y1=T;
+  var depths=[0,8000,16000,32000], maxD=32000, maxY=120;
+  var f16=[[0,110.2],[8000,89.0],[16000,76.2],[32000,59.0]];
+  var q8=[[0,104.7],[8000,76.0],[32000,41.2]];
+  function X(d){return x0+(d/maxD)*(x1-x0);}
+  function Y(v){return y0-(v/maxY)*(y0-y1);}
+  function el(n,a){var e=document.createElementNS(NS,n);for(var k in a)e.setAttribute(k,a[k]);return e;}
+  var cs=getComputedStyle(document.documentElement);
+  var line=cs.getPropertyValue('--line')||'#dde3ec', muted=cs.getPropertyValue('--muted')||'#5a6474',
+      gpu=cs.getPropertyValue('--gpu')||'#17998a', cpu=cs.getPropertyValue('--cpu')||'#c67e12';
+  // gridlines + y labels
+  [0,30,60,90,120].forEach(function(v){
+    g.appendChild(el('line',{x1:x0,y1:Y(v),x2:x1,y2:Y(v),stroke:line,'stroke-width':1}));
+    var t=el('text',{x:x0-8,y:Y(v)+4,'text-anchor':'end','font-size':11,fill:muted,'font-family':'ui-monospace,monospace'});t.textContent=v;g.appendChild(t);
+  });
+  // x labels
+  [[0,'0'],[8000,'8k'],[16000,'16k'],[32000,'32k']].forEach(function(p){
+    var t=el('text',{x:X(p[0]),y:y0+22,'text-anchor':'middle','font-size':11,fill:muted,'font-family':'ui-monospace,monospace'});t.textContent=p[1];g.appendChild(t);
+  });
+  var yl=el('text',{x:14,y:(y0+y1)/2,'text-anchor':'middle','font-size':11,fill:muted,'font-family':'system-ui,sans-serif',transform:'rotate(-90 14 '+((y0+y1)/2)+')'});yl.textContent='decode tok/s';g.appendChild(yl);
+  function series(pts,color){
+    var d=pts.map(function(p,i){return (i?'L':'M')+X(p[0])+' '+Y(p[1]);}).join(' ');
+    g.appendChild(el('path',{d:d,fill:'none',stroke:color,'stroke-width':2.5,'stroke-linejoin':'round'}));
+    pts.forEach(function(p){g.appendChild(el('circle',{cx:X(p[0]),cy:Y(p[1]),r:3.6,fill:color}));});
+  }
+  series(f16,gpu); series(q8,cpu);
+})();
+</script>

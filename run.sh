@@ -54,7 +54,7 @@ benchmark() {
 
 report() { python3 scripts/report.py "${1:?usage: run.sh report <run_dir>}"; }
 
-serve() {
+serve() {   # short-chat benchmark server (prompt cache OFF, for measurement)
   local c="${1:-30}"; local ctx=$(( c * 768 ))
   exec "$BIN/llama-server" -m "$MODEL_Q6" --alias qwen3-4b-legal-q6k \
     --host 127.0.0.1 --port "$PORT" -dev CUDA0 -sm none --main-gpu 0 \
@@ -63,13 +63,29 @@ serve() {
     --no-context-shift -rea off --jinja --no-webui --metrics --slots
 }
 
+# chatbot server: per-slot context = $1 (default 8192), $2 slots (default 1),
+# $3 KV dtype (default f16). Prompt caching is ENABLED for multi-turn reuse.
+chat-serve() {
+  local ctx="${1:-8192}" c="${2:-1}" kv="${3:-f16}"
+  exec "$BIN/llama-server" -m "$MODEL_Q6" --alias qwen3-4b-legal-q6k \
+    --host 127.0.0.1 --port "$PORT" -dev CUDA0 -sm none --main-gpu 0 \
+    -ngl all --fit off -fa on -np "$c" --ctx-size "$(( c * ctx ))" --no-kv-unified -cb \
+    -b 2048 -ub 512 -ctk "$kv" -ctv "$kv" --cache-reuse 256 \
+    -rea off --jinja --no-webui --metrics --slots
+}
+
+context() { bash scripts/context_sweep.sh; }        # E6
+accuracy() { bash scripts/perplexity.sh; }          # E7
+data() { python3 scripts/prepare_data.py; }
+
 reproduce() {
   preflight; corpus; download; merge; build; convert; quantize; verify; benchmark
 }
 
 cmd="${1:-help}"; shift || true
 case "$cmd" in
-  preflight|corpus|download|merge|build|convert|quantize|verify|benchmark|report|serve|reproduce)
+  preflight|corpus|download|merge|build|convert|quantize|verify|benchmark|report|\
+  serve|chat-serve|context|accuracy|data|reproduce)
     "$cmd" "$@";;
-  *) echo "usage: ./run.sh {preflight|corpus|download|merge|build|convert|quantize|verify|benchmark|report|serve|reproduce}";;
+  *) echo "usage: ./run.sh {preflight|corpus|download|merge|build|convert|quantize|verify|benchmark|report|serve|chat-serve <ctx> <slots> <kv>|context|accuracy|data|reproduce}";;
 esac

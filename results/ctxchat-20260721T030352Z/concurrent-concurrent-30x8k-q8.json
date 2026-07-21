@@ -1,0 +1,20 @@
+{
+  "tag": "concurrent-30x8k-q8",
+  "target_ctx": 8192,
+  "concurrency": 30,
+  "measured_turns": 87,
+  "aggregate_output_tok_s": 113.5,
+  "aggregate_output_tok_min": 6810.0,
+  "per_user_output_tok_s": 3.78,
+  "prompt_tok_median": 7273,
+  "cache_hit_frac_median": 0.963,
+  "ttft_s": {
+    "p50": 0.4538495430024341,
+    "p95": 53.664272996014915,
+    "max": 62.68293356592767
+  },
+  "decode_tok_s_median": 5.7,
+  "vram_start_mib": 23046,
+  "vram_peak_mib": 23056,
+  "wall_s": 183.0
+}

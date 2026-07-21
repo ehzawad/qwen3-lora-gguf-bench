@@ -1,0 +1,20 @@
+{
+  "tag": "single-32k",
+  "target_ctx": 32768,
+  "concurrency": 1,
+  "measured_turns": 2,
+  "aggregate_output_tok_s": 28.8,
+  "aggregate_output_tok_min": 1728.0,
+  "per_user_output_tok_s": 28.8,
+  "prompt_tok_median": 28104.5,
+  "cache_hit_frac_median": 0.495,
+  "ttft_s": {
+    "p50": 9.08569099905435,
+    "p95": 9.08569099905435,
+    "max": 9.08569099905435
+  },
+  "decode_tok_s_median": 61.4,
+  "vram_start_mib": 8404,
+  "vram_peak_mib": 8412,
+  "wall_s": 18.1
+}

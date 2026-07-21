@@ -24,7 +24,7 @@
 </style>
 
 <header class="hero"><div class="wrap">
-  <div class="nav"><a href="index.html">◂ Field guide</a><a href="concurrency.html">Concurrency</a><a href="precision.html" class="on">Precision</a><a href="engines.html">Engines &amp; chatbot</a><a href="lora.html">LoRA &amp; SVD</a></div>
+  <div class="nav"><a href="index.html">◂ Field guide</a><a href="concurrency.html">Concurrency</a><a href="context.html">Context &amp; accuracy</a><a href="precision.html" class="on">Precision</a><a href="engines.html">Engines &amp; chatbot</a><a href="lora.html">LoRA &amp; SVD</a><a href="locust.html">Locust</a></div>
   <div class="hero-in">
     <div class="eyebrow">Study E4 · llama-bench · single-stream kernel throughput</div>
     <h1>Precision knobs — decode is bandwidth-bound, prefill isn't</h1>
@@ -72,7 +72,7 @@
       <li><b>KV dtype is a memory knob, barely a speed knob.</b> <code>q8_0</code> KV halves the footprint for only ~4% decode cost — worth it only when KV memory is the real constraint (long context / many slots), not at short single-stream. <code>bf16</code> KV showed no advantage here.</li>
       <li><b>Flash-attention: on</b> (this build/model). +15–21% prefill, +4–9% decode — effectively free here.</li>
     </ul>
-    <div class="callout"><span class="lab">Speed vs accuracy — we measured only speed</span>Q4_K_M's 2.18× decode win carries a <b>quality</b> cost we did not measure. From the literature (no single universal "quality %"): Q6_K is near-lossless; at 4-bit, GGUF-Q4/AWQ/GPTQ are close and depend on model/task/calibration (AWQ often matches/beats GPTQ per its paper, ~1.45× kernel speedup). <b>Validate quality on your task before dropping bits.</b> See <a href="engines.html">Engines &amp; chatbot</a> for the FP8/AWQ engine angle.</div>
+    <div class="callout"><span class="lab">Speed vs accuracy — now measured on this rig</span>Q4_K_M's 2.18× decode win carries a <b>quality</b> cost we <a href="context.html">now measure directly</a>: a full-test wikitext perplexity sweep of exactly these five quants puts <b>Q6_K/Q8_0 practically indistinguishable from bf16</b> (≤0.014% PPL, no paired significance test) and <b>Q4_K_M at +2.42% PPL</b>. That is general-domain likelihood, <b>not legal-task accuracy</b> — and cross-scheme rankings stay literature (AWQ often matches/beats GPTQ per its paper, ~1.45× kernel speedup). <b>Validate quality on your task before dropping bits.</b> See <a href="context.html">Context &amp; accuracy</a> for the numbers, <a href="engines.html">Engines</a> for the FP8/AWQ engine angle.</div>
   </section>
 
   <div class="col foot">Raw data: <code>results/precision-20260720T191131Z/</code>.<br><a href="https://github.com/ehzawad/qwen3-lora-gguf-bench">github.com/ehzawad/qwen3-lora-gguf-bench</a></div>

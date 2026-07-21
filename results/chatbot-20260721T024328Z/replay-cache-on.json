@@ -1,0 +1,93 @@
+{
+  "tag": "cache-on",
+  "cache": true,
+  "server_ctx": 32768,
+  "total_turns": 150,
+  "by_turn": {
+    "1": {
+      "n": 40,
+      "prompt_tok_median": 93.5,
+      "cache_hit_frac_median": 0.035,
+      "ttft_ms_median": 209.1,
+      "ttft_ms_p95": 358.2,
+      "decode_tok_s_median": 104.2
+    },
+    "2": {
+      "n": 40,
+      "prompt_tok_median": 441.0,
+      "cache_hit_frac_median": 0.322,
+      "ttft_ms_median": 139.1,
+      "ttft_ms_p95": 173.4,
+      "decode_tok_s_median": 103.3
+    },
+    "3": {
+      "n": 40,
+      "prompt_tok_median": 797.5,
+      "cache_hit_frac_median": 0.584,
+      "ttft_ms_median": 102.4,
+      "ttft_ms_p95": 124.3,
+      "decode_tok_s_median": 101.9
+    },
+    "4": {
+      "n": 20,
+      "prompt_tok_median": 1086.5,
+      "cache_hit_frac_median": 0.701,
+      "ttft_ms_median": 106.6,
+      "ttft_ms_p95": 126.8,
+      "decode_tok_s_median": 101.1
+    },
+    "5": {
+      "n": 6,
+      "prompt_tok_median": 1421.0,
+      "cache_hit_frac_median": 0.753,
+      "ttft_ms_median": 115.2,
+      "ttft_ms_p95": 122.5,
+      "decode_tok_s_median": 100.0
+    },
+    "6": {
+      "n": 2,
+      "prompt_tok_median": 1366.5,
+      "cache_hit_frac_median": 0.778,
+      "ttft_ms_median": 101.3,
+      "ttft_ms_p95": 112.4,
+      "decode_tok_s_median": 108.2
+    },
+    "7": {
+      "n": 2,
+      "prompt_tok_median": 1678.5,
+      "cache_hit_frac_median": 0.848,
+      "ttft_ms_median": 90.6,
+      "ttft_ms_p95": 94.1,
+      "decode_tok_s_median": 107.6
+    }
+  },
+  "by_depth": {
+    "0-1000": {
+      "n": 118,
+      "prompt_tok_median": 454.5,
+      "cache_hit_frac_median": 0.322,
+      "ttft_ms_median": 136.9,
+      "ttft_ms_p95": 282.4,
+      "decode_tok_s_median": 103.7
+    },
+    "1000-2000": {
+      "n": 30,
+      "prompt_tok_median": 1186.5,
+      "cache_hit_frac_median": 0.746,
+      "ttft_ms_median": 109.9,
+      "ttft_ms_p95": 126.8,
+      "decode_tok_s_median": 100.5
+    },
+    "2000-4000": {
+      "n": 2,
+      "prompt_tok_median": 2100.0,
+      "cache_hit_frac_median": 0.949,
+      "ttft_ms_median": 74.7,
+      "ttft_ms_p95": 87.2,
+      "decode_tok_s_median": 99.7
+    },
+    "4000-8000": null,
+    "8000-16000": null,
+    "16000-40000": null
+  }
+}

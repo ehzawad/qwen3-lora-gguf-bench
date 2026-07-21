@@ -1,0 +1,93 @@
+{
+  "tag": "cache-off",
+  "cache": false,
+  "server_ctx": 32768,
+  "total_turns": 150,
+  "by_turn": {
+    "1": {
+      "n": 40,
+      "prompt_tok_median": 93.5,
+      "cache_hit_frac_median": 0.0,
+      "ttft_ms_median": 228.1,
+      "ttft_ms_p95": 449.8,
+      "decode_tok_s_median": 103.7
+    },
+    "2": {
+      "n": 40,
+      "prompt_tok_median": 438.5,
+      "cache_hit_frac_median": 0.0,
+      "ttft_ms_median": 179.3,
+      "ttft_ms_p95": 396.8,
+      "decode_tok_s_median": 102.4
+    },
+    "3": {
+      "n": 40,
+      "prompt_tok_median": 797.0,
+      "cache_hit_frac_median": 0.0,
+      "ttft_ms_median": 219.0,
+      "ttft_ms_p95": 415.7,
+      "decode_tok_s_median": 101.0
+    },
+    "4": {
+      "n": 20,
+      "prompt_tok_median": 1083.0,
+      "cache_hit_frac_median": 0.0,
+      "ttft_ms_median": 289.1,
+      "ttft_ms_p95": 505.4,
+      "decode_tok_s_median": 100.1
+    },
+    "5": {
+      "n": 6,
+      "prompt_tok_median": 1419.5,
+      "cache_hit_frac_median": 0.0,
+      "ttft_ms_median": 350.8,
+      "ttft_ms_p95": 483.1,
+      "decode_tok_s_median": 99.9
+    },
+    "6": {
+      "n": 2,
+      "prompt_tok_median": 1325.5,
+      "cache_hit_frac_median": 0.0,
+      "ttft_ms_median": 318.3,
+      "ttft_ms_p95": 417.0,
+      "decode_tok_s_median": 100.7
+    },
+    "7": {
+      "n": 2,
+      "prompt_tok_median": 1637.0,
+      "cache_hit_frac_median": 0.0,
+      "ttft_ms_median": 401.9,
+      "ttft_ms_p95": 505.0,
+      "decode_tok_s_median": 99.7
+    }
+  },
+  "by_depth": {
+    "0-1000": {
+      "n": 121,
+      "prompt_tok_median": 454,
+      "cache_hit_frac_median": 0.0,
+      "ttft_ms_median": 205.5,
+      "ttft_ms_p95": 326.0,
+      "decode_tok_s_median": 102.3
+    },
+    "1000-2000": {
+      "n": 27,
+      "prompt_tok_median": 1183,
+      "cache_hit_frac_median": 0.0,
+      "ttft_ms_median": 346.5,
+      "ttft_ms_p95": 483.1,
+      "decode_tok_s_median": 99.9
+    },
+    "2000-4000": {
+      "n": 2,
+      "prompt_tok_median": 2091.0,
+      "cache_hit_frac_median": 0.0,
+      "ttft_ms_median": 505.2,
+      "ttft_ms_p95": 505.4,
+      "decode_tok_s_median": 98.8
+    },
+    "4000-8000": null,
+    "8000-16000": null,
+    "16000-40000": null
+  }
+}

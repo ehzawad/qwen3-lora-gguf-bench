@@ -1,0 +1,5 @@
+{"quant": "bf16", "ppl": 9.9705}
+{"quant": "Q8_0", "ppl": 9.9691}
+{"quant": "Q6_K", "ppl": 9.9695}
+{"quant": "Q5_K_M", "ppl": 10.1205}
+{"quant": "Q4_K_M", "ppl": 10.2122}

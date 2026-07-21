@@ -1,0 +1,17 @@
+### B) per-slot VRAM at fixed 4 slots (f16) ###
+  per-slot-ctx=2048 np=4 f16 -> FIT 4916MiB
+  per-slot-ctx=4096 np=4 f16 -> FIT 6070MiB
+  per-slot-ctx=8192 np=4 f16 -> FIT 8378MiB
+  per-slot-ctx=16384 np=4 f16 -> FIT 12994MiB
+  per-slot-ctx=32768 np=4 f16 -> FIT 22226MiB
+### C) fit/no-fit frontier (per-slot-ctx, np, kv) ###
+  per-slot-ctx=8192 np=16 kv=f16 (30-user? no) -> FIT 22202MiB
+  per-slot-ctx=8192 np=20 kv=f16 (30-user? no) -> NOFIT(OOM)
+  per-slot-ctx=16384 np=8 kv=f16 (30-user? no) -> FIT 22210MiB
+  per-slot-ctx=16384 np=12 kv=f16 (30-user? no) -> NOFIT(OOM)
+  per-slot-ctx=32768 np=4 kv=f16 (30-user? no) -> FIT 22226MiB
+  per-slot-ctx=32768 np=6 kv=f16 (30-user? no) -> NOFIT(OOM)
+  per-slot-ctx=8192 np=30 kv=q8_0 (30-user? yes) -> FIT 23044MiB
+  per-slot-ctx=8192 np=40 kv=q8_0 (30-user? yes) -> NOFIT(OOM)
+  per-slot-ctx=16384 np=16 kv=q8_0 (30-user? no) -> NOFIT(OOM)
+  per-slot-ctx=32768 np=8 kv=q8_0 (30-user? no) -> NOFIT(OOM)

@@ -23,7 +23,7 @@
 </style>
 
 <header class="hero"><div class="wrap">
-  <div class="nav"><a href="index.html">◂ Field guide</a><a href="concurrency.html">Concurrency</a><a href="precision.html">Precision</a><a href="engines.html" class="on">Engines &amp; chatbot</a><a href="lora.html">LoRA &amp; SVD</a></div>
+  <div class="nav"><a href="index.html">◂ Field guide</a><a href="concurrency.html">Concurrency</a><a href="context.html">Context &amp; accuracy</a><a href="precision.html">Precision</a><a href="engines.html" class="on">Engines &amp; chatbot</a><a href="lora.html">LoRA &amp; SVD</a><a href="locust.html">Locust</a></div>
   <div class="hero-in">
     <div class="eyebrow">Study E5 + literature review · what a real chatbot actually needs</div>
     <h1>Engines &amp; real-world chatbots</h1>
@@ -49,10 +49,10 @@
   </section>
 
   <section>
-    <h2>What a real chatbot needs <span style="font-family:var(--serif);font-weight:400;font-size:.6em;color:var(--muted)">(from the 2025–2026 literature — not our measurement)</span></h2>
+    <h2>What a real chatbot needs <span style="font-family:var(--serif);font-weight:400;font-size:.6em;color:var(--muted)">(mostly 2025–2026 literature; prefix caching now measured on this rig — see <a href="context.html">Context &amp; accuracy</a>)</span></h2>
 
     <h3>Prefix caching is the top lever for multi-turn</h3>
-    <p class="col">Real chats are multi-turn: the system prompt + history is a huge <b>shared prefix</b>, each new turn a tiny suffix. With prefix caching (automatic in <a href="https://vllm.ai/blog/2025-09-05-anatomy-of-vllm">vLLM</a>/SGLang) only the uncached suffix is prefilled. <b>Our <a href="locust.html">E3</a> deliberately disabled it</b> (<code>--no-cache-prompt</code>) — measuring the worst case (4.3∶1 prefill∶decode). One multi-turn KV-reuse system cuts P99 TTFT up to <b>−69% vs vLLM/SGLang KV-cache baselines</b> (<a href="https://arxiv.org/abs/2606.16135">SwiftCache</a>). Enable it before tuning anything else.</p>
+    <p class="col">Real chats are multi-turn: the system prompt + history is a huge <b>shared prefix</b>, each new turn a tiny suffix. With prefix caching (automatic in <a href="https://vllm.ai/blog/2025-09-05-anatomy-of-vllm">vLLM</a>/SGLang) only the uncached suffix is prefilled. <b>Our <a href="locust.html">E3</a> deliberately disabled it</b> (<code>--no-cache-prompt</code>) — measuring the worst case (4.3∶1 prefill∶decode). Our <a href="context.html">§9 chatbot A/B</a> then <b>measured it directly</b>: at 2–4k depth prefix caching cut TTFT <b>~6.8×</b> (505→75 ms), and the ON/OFF trends <em>cross</em> (ON falls with depth, OFF rises). At scale, one multi-turn KV-reuse system cuts P99 TTFT up to <b>−69% vs vLLM/SGLang KV-cache baselines</b> (<a href="https://arxiv.org/abs/2606.16135">SwiftCache</a>). Enable it before tuning anything else.</p>
 
     <h3>TTFT &amp; TPOT beat aggregate throughput for UX</h3>
     <p class="col">TTFT = time to first token; TPOT = inter-token latency (streaming smoothness). At our throughput peak (C=64) aggregate tok/s is maximal but each user waits ~20 s. The production metric is <b>goodput</b> — requests meeting a latency SLO — not raw throughput. Pick your operating point from an SLO.</p>
@@ -74,7 +74,7 @@
 
     <h3>Speed vs accuracy, and the latest levers</h3>
     <p class="col">Quantization: Q6_K near-lossless; at 4-bit, GGUF-Q4/AWQ/GPTQ are close and model/task/calibration-dependent (AWQ often matches/beats GPTQ per its <a href="https://arxiv.org/abs/2306.00978">paper</a>, ~1.45× kernel speedup). FP8: the A5000 lacks native FP8 W8A8 acceleration (needs Ada/Hopper), though Ampere runs FP8 weight-only via Marlin. The 2025–26 levers — <b>speculative decoding, chunked prefill, prefix caching, disaggregated prefill/decode</b> (vLLM still labels the last <em>experimental</em>) — typically move TTFT and effective concurrency more than a faster quant.</p>
-    <div class="callout"><span class="lab">Bottom line</span>Our numbers are a <b>floor</b>: one engine, prefix cache off, no speculative decoding. On the right engine with prefix caching on, a multi-turn chatbot's TTFT under load is substantially better than our E3 worst case — by how much on this rig is unmeasured.</div>
+    <div class="callout"><span class="lab">Bottom line</span>Our headline concurrency numbers are a <b>floor</b>: one engine, no speculative decoding. Prefix caching we <em>did</em> measure single-stream on this rig (<a href="context.html">~6.8× lower TTFT at depth</a>); what stays unmeasured is how a different engine's scheduler behaves at high concurrency — vLLM crashed at warmup, so no cross-engine winner is stated.</div>
   </section>
 
   <div class="col foot">Raw data: <code>results/engines/eng-20260721T002012Z/</code> (incl. the vLLM crash note). Literature cited inline.<br><a href="https://github.com/ehzawad/qwen3-lora-gguf-bench">github.com/ehzawad/qwen3-lora-gguf-bench</a></div>

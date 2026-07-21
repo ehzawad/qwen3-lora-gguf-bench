@@ -346,12 +346,15 @@ GGUF, CPU/GPU hybrid, excellent *single-user* latency, trivial deployment.
 adapters, one base). Single-user desktop/edge/offline, a quick prototype, or
 CPU/mixed hardware → **llama.cpp**.
 
-**D. Speed vs accuracy is a real trade — we measured only speed.** E4 showed
-Q4_K_M decodes 2.18× faster than bf16, but that speed has a *quality* cost that
-we did **not** measure. From the literature (no single universal "quality %"
-exists — it depends on model/task/calibration/kernel): **Q6_K has a small,
-model-specific perplexity delta** in llama.cpp's own tests (effectively
-near-lossless for most uses); at **4-bit**, GGUF-Q4 / AWQ / GPTQ are close, and
+**D. Speed vs accuracy is a real trade — and §9.4 now measures the perplexity
+half.** E4 showed Q4_K_M decodes 2.18× faster than bf16; §9.4's full-test
+wikitext sweep shows what that costs in *general-domain likelihood* — **Q6_K/Q8_0
+practically indistinguishable from bf16 (≤0.014% PPL, no paired significance test),
+Q4_K_M +2.42% PPL** — but that is **not legal-task quality**, which we did not measure. From the literature (no single
+universal "quality %" exists — it depends on model/task/calibration/kernel):
+**Q6_K has a small, model-specific perplexity delta** in llama.cpp's own tests
+(effectively near-lossless for most uses), consistent with our §9.4 result; at
+**4-bit**, GGUF-Q4 / AWQ / GPTQ are close, and
 the [AWQ paper](https://arxiv.org/abs/2306.00978) reports AWQ *often matches or
 outperforms* GPTQ in its evaluated settings with a ~1.45× kernel speedup — **not**
 a universal ordering ([ai.rs](https://ai.rs/ai-developer/quantization-methods-compared),
@@ -381,8 +384,9 @@ typically move TTFT and effective concurrency more than picking a faster quant.
 > **Bottom line for a chatbot:** treat our **E3 no-cache result as a *worst case***
 > for repeated multi-turn prefill. With prefix caching enabled (and, on a
 > high-concurrency engine, continuous batching + the levers above), a multi-turn
-> chatbot's TTFT under
-> conversation load, and higher usable concurrency than our host-bound peak.
+> chatbot keeps TTFT far lower under conversation load and reaches higher usable
+> concurrency than our host-bound peak. Our own §9.3 A/B measured this directly:
+> prefix caching cut TTFT ~6.8× in an indicative 2–4k-depth bucket (n=2), and the ON/OFF trends *cross*.
 
 ## 8. When to Use What — a decision guide
 
@@ -395,7 +399,7 @@ typically move TTFT and effective concurrency more than picking a faster quant.
 | **Balanced (good tok/s, tolerable latency)** | **C≈24–32**; ~700–750 tok/s, p50 ~9–11 s. | Efficient region ends around here; marginal gains shrink fast past C=32. |
 | **Avoid wasting resources** | **Don't exceed C≈64** *(this rig/build/model/768-tok slots)*. | Past 64, aggregate throughput *declines* (−29, −23 tok/s) — you pay host-side overhead for nothing. |
 | **Fastest decode / most tok/s per byte** | Quantize weights **as low as quality allows** (Q4_K_M = 2.18× BF16 decode). | Decode is bandwidth-bound; smaller weights = faster. |
-| **Higher-precision candidates** | **Q6_K or Q8_0** (default Q6_K, 3.3 GB, 6.56 bpw) — **validate quality on your task.** | Prefill is compute-bound (flat), so higher-bit weights cost little on prefill; you pay only in decode. *(We measured speed/memory, not semantic quality — see §9.)* |
+| **Higher-precision candidates** | **Q6_K or Q8_0** (default Q6_K, 3.3 GB, 6.56 bpw) — **validate quality on your task.** | Prefill is compute-bound (flat), so higher-bit weights cost little on prefill; you pay only in decode. *(§9.4 measured wikitext PPL — Q6_K/Q8_0 practically indistinguishable from bf16 (≤0.014%, no paired CI) — but not legal-task quality; see §9.4 & §10.)* |
 | **Long context / many slots, VRAM-tight** | Use **q8_0 KV cache** (~½ footprint, ~4% speed cost). | Only worth it when KV memory is the real constraint; useless at short-ctx single-stream. |
 | **Any config** | **Flash-attention ON.** | +15–21% prefill, +4–9% decode, free. |
 | **Sizing VRAM** | Budget **~3.5 GiB base + 108 MiB × slots** (768-ctx). | Linear per-slot preallocation (R²=1.00000); VRAM is never your binding limit before throughput peaks. |
@@ -404,11 +408,116 @@ typically move TTFT and effective concurrency more than picking a faster quant.
 
 ---
 
-## 9. LIMITATIONS & CAVEATS (read this as carefully as the results)
+## 9. Context window, concurrency, and the accuracy↔speed tradeoff
+
+Here is the mental model to carry out of this section: **the long-context, multi-turn regime has a different binding constraint than the short-chat regime.** Short-context serving (§3–§4) was *not* VRAM-bound — decode was weight-**bandwidth**-bound, prefill was compute-bound, and at high concurrency the limiter moved off the GPU entirely (host-feed-bound). The moment you open the context window and keep sessions resident, capacity flips to **VRAM-bound**: it is now dictated by how many bytes of KV cache you can hold. And — a separate tax — every token you decode gets slower as the *populated* cache depth grows. Two different taxes: reserved window size sets what fits; actual KV depth sets how fast each token decodes.
+
+All numbers below are from a **single RTX A5000 (24564 MiB, ~24 GB)**; read the per-table labels, they change what each number is allowed to mean.
+
+### 9.1 Context window is the VRAM constraint (the KV math)
+
+The KV cache is linear in tokens, and on this card the per-token cost is measured, not guessed:
+
+| Quantity | Value |
+|---|---|
+| Card VRAM | 24564 MiB (~24 GB) |
+| Model weights (Q6_K) | 3.07 GiB (3,300,304,384 bytes) |
+| f16 KV | **144.25 KiB/token** (measured) |
+| q8_0 KV | **76.5 KiB/token** (53% of f16, not 50%) |
+
+The f16 figure is **measured** from the allocation slope: `(22226 − 4916) MiB ÷ [(32768 − 2048) × 4 tokens] = 144.25 KiB/token`. The q8_0 figure is **geometry-derived** (34 bytes per 32-int8 block ⇒ 76.5 KiB/token) and is consistent with the q8_0 frontier, not independently back-solved from a slope. Note it lands at **53%** of f16, not a clean half, because 8-bit KV still carries per-block scale/overhead — you do not get a free doubling.
+
+Multiply that per-token cost by (slots × context length) and you get the binding constraint. The measured fit frontier (a **static server-boot allocation test** — it proves the KV reservation does not `cudaMalloc`-OOM at boot; it does **not** promise acceptable latency at that slot count):
+
+| Depth | f16 — fit / OOM | q8_0 — fit / OOM |
+|---|---|---|
+| 8k | **16 fit** (22202 MiB) / 20 OOM | **30 fit** (23044 MiB, ~1.5 GiB headroom) / 40 OOM |
+| 16k | **8 fit** (22210 MiB) / 12 OOM | 16 OOM → cap **< 16** |
+| 32k | **4 fit** (22226 MiB) / 6 OOM | 8 OOM → cap **< 8** |
+
+Two caveats you must not paper over. First, the brackets are **coarse**: f16@8k is known only as "≥16 and <20," so the true ceiling sits somewhere inside each bracket. Second, for q8_0 at 16k/32k there is **no measured fit point** — the smallest counts we tried already OOM'd — so we can honestly say "<16 at 16k" and "<8 at 32k" but cannot name a specific cap.
+
+**The direct answer to "can I serve 30 or 100 users?"** — where *users = 30 KV-resident dedicated slots held in VRAM simultaneously*, not 30 independently arriving clients:
+
+| Resident users | 8k | 16k | 32k |
+|---|---|---|---|
+| **30** | ✅ **only** with q8_0 KV (edge, 22.5 GB); f16 needs **≤4k** | ❌ infeasible | ❌ infeasible |
+| **100** | ❌ infeasible | ❌ infeasible | ❌ infeasible |
+
+So: 30 users fit **only** as a q8_0-at-8k edge case (~1.5 GiB headroom), **or** with f16 KV if you drop each slot to **≤4k** (that ≤4k boundary is derived from the 144.25 KiB/token math, since the frontier itself only measured 8k/16k/32k). Every other 30-user cell and **every** 100-user cell is out of memory — the opposite of the short-chat finding, where tiny sessions let you pack far more concurrency.
+
+### 9.2 Depth taxes every token (decode and prefill both slow down)
+
+Fitting in VRAM is necessary but not sufficient — a slot count that "fits" can still be too slow. Independent of concurrency, deeper KV slows a **single stream** monotonically. These are **single-sequence llama-bench** figures (tg64 decode / pp512 prefill, one sequence), i.e. how depth taxes *one* request — not per-slot throughput under load:
+
+| Depth | f16 decode tok/s | q8_0 decode tok/s | q8_0 as % of f16 |
+|---|---|---|---|
+| 0 | 110.2 | 104.7 | 94.9% |
+| 2k | 103.1 | — | — |
+| 8k | 89.0 | 76.0 | 85.4% |
+| 16k | 76.2 | — | — |
+| 32k | 59.0 | 41.2 | 69.8% |
+
+Read two lessons here. (1) f16 decode loses ~19% by 8k and ~47% by 32k (1.87× slowdown d0→d32k). (2) q8_0's dequant-during-attention penalty **grows with depth** — from 5% at empty to ~30% at 32k (2.54× slowdown d0→d32k). Choosing q8_0 to buy capacity therefore costs the most decode speed exactly where context is deepest — and note its *accuracy* impact is **unmeasured here**: §9.4's perplexity sweep quantized the *weights*, not the KV cache, so 8-bit KV quality is a separate question this study does not answer. (The two f16 sources differ ~3% at d0 — 110.2 vs 106.7 from a separate run — so treat depth deltas as few-percent noisy, not exact.)
+
+Prefill slows too, and the two "prefill" numbers are **not interchangeable**: the marginal rate of adding a 512-token chunk *on top of existing depth* drops 2.84× (4604 → 1620 tok/s, empty → 32k), while average whole-prompt prefill from empty declines a gentler 1.84× (averaging over the growing prompt masks the tail cost).
+
+Now put depth and concurrency together. Single user, **scripted-user replay** (fixed user turns seeded from **synthetic composite sessions**; the model generates the assistant replies, which are appended — so it is *not* teacher-forcing, and the follow-up prompt depends on what the model said):
+
+| Server ctx | end-to-end tok/s | steady decode tok/s | TTFT p50 | cache hit | prompt tok (med) |
+|---|---|---|---|---|---|
+| 8k | 80.9 | 103.5 | 0.16 s | 0.966 | 7,694 |
+| 16k | 59.2 | 88.2 | 0.21 s | 0.982 | 15,415 |
+| 32k | 28.8 | 61.4 | ~9.09 s (n=2) | — | 28,105 (n=2 turns) |
+
+The headline "81 → 59 → 29 tok/s (8k → 32k)" is **end-to-end throughput**, and the 32k collapse is a **prefill/TTFT event, not a decode event**: steady-state decode was still 61.4 tok/s. The 32k run had only **two turns** — a cold ~28k-token first prefill (~9.09 s TTFT) and a highly-cached follow-up — so there is *no stable percentile* here (the 0.495 is just the 2-point mean cache-hit, and the "p50" is the upper of two points). Read the 32k row as "one cold deep prefill dominated a 2-turn session," not as a median. Do not quote 29 as a decode rate.
+
+And the flagship concurrency result — **30×8k is allocation-feasible but slow**:
+
+| Config | slots | agg tok/s | fair-share (agg/C) | median per-req decode | TTFT p50 / p95 / max | VRAM peak | turns ok |
+|---|---|---|---|---|---|---|---|
+| 30×8k, q8_0 KV | 30 | 113.5 | **3.78** | **5.7** | 0.45 s / 53.7 s / 62.7 s | 23056 MiB | 87/90 |
+| 16×8k, f16 KV | 16 | 135.0 | **8.44** | 13.2 | 0.26 s / 25.5 s / 29.4 s | 22214 MiB | 45/48 |
+
+Two honest distinctions. **"3.78" is fair-share** — aggregate 113.5 tok/s divided by 30, i.e. the throughput *if* it were split evenly; it is **not** a measured per-request rate. The measured **median per-request decode was 5.7 tok/s** (still below comfortable reading speed). And the run was **not clean**: 3 of 90 follow-up turns overflowed the 8192-token window (the appended history grew to 8209–8217 tokens) and were rejected — so 30×8k proves *memory* feasibility, not that every session stays inside the window. q8_0 nearly doubled resident slots (16 → 30) at similar VRAM, but aggregate throughput barely moved (135 → 113) while fair-share **halved** — a pure latency-for-capacity trade. The brutal p95/max TTFT (53.7 s / 62.7 s) is a **zero-think-time finite closed loop** (every slot always has a request queued); there is no arrival process, so these do **not** estimate production (open-loop) latency. 100 residents would blow the KV budget outright.
+
+### 9.3 Prefix caching flips the TTFT trend — the multi-turn must-have
+
+If you take one operational lever from this section, take this one. With prefix caching **on**, deeper history *raises* the cache-hit rate and *lowers* TTFT; with it **off**, every turn reprocesses the whole prompt and TTFT climbs. Decode rate is untouched (~99.7–104.2 tok/s in both) — caching is purely a prefill/TTFT effect. Measured over 150 scripted-user turns (fixed user prompts; the model writes each reply) replaying **individual UltraChat conversations**, server_ctx 32768:
+
+| Depth bucket | cache ON — hit / TTFT median | cache OFF — hit / TTFT median |
+|---|---|---|
+| 0–1k | 0.322 / **136.9 ms** | 0.0 / 205.5 ms |
+| 1–2k | 0.746 / **109.9 ms** | 0.0 / 346.5 ms |
+| 2–4k | 0.949 / **74.7 ms** | 0.0 / 505.2 ms (n=2) |
+
+At 2–4k depth, prefix caching cuts TTFT **~6.8×** (505 → 75 ms). The trends genuinely *cross*: ON falls (137 → 75 ms) as history grows, OFF rises (205 → 505 ms). For any multi-turn deployment this is non-optional — turning it off makes conversations get slower the longer they go. (Deep buckets have tiny n=2; treat as indicative, not robust.)
+
+### 9.4 The accuracy↔speed tradeoff (measured)
+
+This is where you decide which quant pays for its speed. All five runs are the **same merged model** at different GGUF precisions, scored on **all 583 complete 512-token chunks** of the wikitext-2-raw test using **llama-perplexity's default half-window scoring** (each disjoint 512-token chunk scores its second 256 tokens; this is *not* the strided sliding-window mode — no `--ppl-stride` was passed). Decode tok/s from the E4 benchmark on the same A5000:
+
+| Quant | Wikitext PPL (±1σ) | ΔPPL vs bf16 | decode tok/s | speedup | file size |
+|---|---|---|---|---|---|
+| bf16 | 9.9705 ±0.0765 | 0 (reference) | 77.0 | 1.00× | 7.49 GiB |
+| Q8_0 | 9.9691 ±0.0764 | −0.014% | 125.4 | 1.63× | 3.98 GiB |
+| Q6_K | 9.9695 ±0.0761 | −0.010% | 133.3 | 1.73× | 3.07 GiB |
+| Q5_K_M | 10.1205 ±0.0779 | +1.50% | 155.2 | 2.02× | 2.69 GiB |
+| Q4_K_M | 10.2122 ±0.0780 | +2.42% | 168.0 | **2.18×** | 2.32 GiB |
+
+**Speed rises monotonically as bits drop** (77 → 168 tok/s). PPL does *not*: the point estimates are **practically flat through Q6_K** (bf16/Q8/Q6 all land within 0.014% of each other, and each estimate carries its own ~±0.076 run-level uncertainty — larger than the gaps between them), then **rise clearly at Q5 (+1.50%) and Q4 (+2.42%)**. Because every model scored *identical* text, a proper significance test would be a paired per-chunk loss-difference analysis, which **we did not compute** — so I will not claim "within noise" or "lossless." Honestly: Q6_K/Q8_0 are **practically indistinguishable from bf16 on this corpus** (≤0.014% point-estimate delta), so **Q6_K is the sensible default**; **Q4_K_M costs +2.42% PPL to buy 2.18× decode** (and its small file leaves more room for KV — the real bottleneck, per §9.1).
+
+Read the caveats before you quote these. This is **general-domain next-token likelihood on wikitext, not legal-task accuracy** — lower PPL here does **not** certify downstream contract-intake performance. The bf16 GGUF is a **same-precision reference (ΔPPL ≡ 0 by definition), not lossless ground truth** versus the original PyTorch/adapter model. And "+2.42% PPL" is **not** "Q4 loses 2.4% quality" and says nothing about LoRA fidelity — it is a likelihood delta on one corpus; the *ordering* (Q4/Q5 worse than Q6/Q8/bf16) is trustworthy, but no per-quant confidence interval on the *difference* was computed.
+
+### Which LoRA
+
+Every number above is one model: **`narcolepticchicken/qwen3-4b-legal-ops-contract-intake-lora`** (Qwen3-4B, LoRA **rank 16 / alpha 32**), **merged into the base weights** before GGUF export. So there is no adapter-swap or separate-adapter overhead in any measurement here — you are benchmarking a single merged checkpoint at five precisions, and the KV/context frontier is set by the 4B base geometry, not by the adapter.
+
+## 10. LIMITATIONS & CAVEATS (read this as carefully as the results)
 
 **A number without its caveat is a liability. These are the ones that will bite you if you forget them.**
 
-1. **One GPU, one build, one model.** Everything is on a **single RTX A5000 (24 GB)**, llama.cpp CUDA build `91d2fc38`, f16 KV, `--no-kv-unified`, 768-tok slots, Qwen3-4B-Instruct-2507 + legal-ops LoRA merged to Q6_K. **Results are hardware- and build-specific** and do **not** transfer to other GPUs, quantizations, batch policies, or prompt/gen lengths. The peak (C=64), the ~108 MiB/slot slope, the CPU crossover — all A5000-and-this-build specific.
+1. **One GPU, one build, one model.** Everything is on a **single RTX A5000 (24 GB)**, llama.cpp CUDA build `91d2fc38`, Qwen3-4B-Instruct-2507 + legal-ops LoRA merged to Q6_K. The **f16 KV, `--no-kv-unified`, 768-tok slots** configuration applies to E1/E4/E5/Locust; **§9 deliberately varies these** (f16 *and* q8_0 KV, 8k/16k/32k slots) — so read each §9 table's own labels. **Results are hardware- and build-specific** and do **not** transfer to other GPUs, quantizations, batch policies, or prompt/gen lengths. The peak (C=64), the ~108 MiB/slot slope, the CPU crossover — all A5000-and-this-build specific.
 
 2. **Closed-loop ≠ open-loop; never mix the numbers.** The Section 3 concurrency sweep is a **barrier-synchronous saturation probe** (~242-token prompts / exactly 256 generated, `ignore_eos`, fully-backlogged server). Its p50/p95 latencies and TTFTs reflect a **saturated** server and would differ under real Poisson arrivals. The Locust runs (Section 6) are **closed-loop finite-user with think-time** — user count is an *upper bound* on in-flight concurrency, and offered load is throttled by the user pool, **not pushed to saturation** (u20 = 2.07 req/s, u60 = 2.89 req/s). **Do NOT compare Locust tok/s (E2: 292.6/412.3; E3: 205.9) head-to-head with the E1 saturation tok/s.** Even u60's 412 tok/s is think-time-throttled, not a ceiling. They measure different regimes.
 
@@ -430,27 +539,54 @@ typically move TTFT and effective concurrency more than picking a faster quant.
 
 11. **bf16 read-back inflates the SVD floors.** The control's rank-16 delta reads as eff-rank ~43 (not 16) and ~74% (not 100%) energy because it's read from bf16-merged weights: bf16 rounding noise (~2⁻⁸·|W|) is non-trivial against a delta only ~0.2% of the base norm. This is the intended calibration baseline, but it means absolute eff-rank/recon floors are **quant-inflated for both deltas**.
 
-12. **We measured speed and memory, NOT semantic quality.** No perplexity, task
-accuracy, or output-quality study was run on any quant, KV dtype, or the merged
-model. All "quality" statements (Q6_K near-lossless, Q4 ~92%, AWQ>GPTQ) come from
-*external* literature (§7 D), not this work. Validate quality on your own task
-before choosing a lower-bit quant.
+12. **The accuracy we measured is wikitext perplexity, not task quality — and no
+paired significance test was run.** §9.4 scores all 583 disjoint 512-token chunks
+(llama-perplexity's **default half-window** method — *not* strided sliding-window;
+no `--ppl-stride`) across five precisions of the *same merged model*. That gives a
+trustworthy **ordering** (Q4/Q5 worse than Q6/Q8/bf16), but the "practically
+indistinguishable" call for Q6_K/Q8_0 rests on **point estimates within 0.014%**,
+each carrying its own ~±0.076 run-level uncertainty — I did **not** compute a
+paired per-chunk loss-difference CI, so do not read it as a formal "within-noise"
+or "lossless" result. It is also **general-domain likelihood, not legal-task
+accuracy**: the bf16 GGUF is a *same-precision reference* (ΔPPL ≡ 0 by definition),
+**not lossless ground truth** versus the original adapter model. Claims like "Q4
+loses 2.4% quality" or "the adapter is preserved" are **not** supported. KV-cache
+quantization (q8_0 KV) was **not** perplexity-tested — §9.4 quantized weights
+only. AWQ>GPTQ and cross-scheme rankings still come from *external* literature
+(§7 D). Validate quality on your own task before dropping precision.
 
-13. **The host-bound diagnosis is an inference, not an isolated cause.** The
+13. **The §9 context/frontier numbers carry three specific caveats.** (a) The
+VRAM fit frontier is a **static server-boot allocation test** — it proves the KV
+reservation does not OOM at boot, *not* that latency at that slot count is
+acceptable, and the brackets are coarse (f16@8k is only "≥16, <20"; q8_0 at
+16k/32k has **no measured fit point**, only an upper bound). (b) The decode/prefill
+depth curves are **single-stream** `llama-bench`, not per-slot throughput under N
+concurrent users. (c) The multi-turn chatbot runs are **scripted-user replay with
+model-generated assistant replies** (fixed user turns; the model writes the bot
+side, which is appended) — *not* teacher-forcing. The concurrent (ctxchat) runs are
+**composite-history-seeded** (UltraChat transcripts concatenated to hit 8k/16k/32k);
+the cache A/B (§9.3) replays **individual UltraChat conversations**, not composites.
+"30 users" means **30 KV-resident slots on a zero-think-time closed loop**, whose
+p95/max TTFT (53.7 s / 62.7 s) is contention, not open-loop production latency; and
+that run had **3/90 turns overflow the 8192 window** (feasible ≠ clean). The 30×8k
+"3.78 tok/s" is **fair-share (agg/30)**, not a measured per-request rate (median
+per-request decode was 5.7). Deep-bucket cache stats have n=2; treat as indicative.
+
+14. **The host-bound diagnosis is an inference, not an isolated cause.** The
 telemetry (GPU underfed, server CPU up ~11×) is *consistent with and most
 strongly points to* a host-side feed/orchestration bottleneck, but no profiler,
 CUDA trace, per-core study, or thread-affinity ablation was run — so batch
 construction, sampling, sync, kernel-launch gaps, or bookkeeping are not
 individually ruled in or out.
 
-14. **Dirty worktree provenance.** The E1/E4/E5/Locust run manifests record
+15. **Dirty worktree provenance.** The E1/E4/E5/Locust run manifests record
 `source_dirty=true` and Work-A's `source_git_commit` is `null` — the *exact* code
 state per run is not pinned in every manifest (the harnesses themselves are
 committed and pinned). Raw per-slot server logs are gitignored; the derived
 evidence that depends on them (the vLLM crash note, the E3 per-turn timing
 summary) is committed.
 
-15. **Minor data hygiene.** C=24 had 1 failed request of 240 (all other sweep
+16. **Minor data hygiene.** C=24 had 1 failed request of 240 (all other sweep
 points 0 failures; throughput computed on the 239). C=32/32b agree within ~0.6%.
 Locust CSV percentiles are bucketed to 100 ms/1000 ms — the JSON token-window
 values are the precise ones and were quoted preferentially.
@@ -459,7 +595,7 @@ values are the precise ones and were quoted preferentially.
 
 ### The one-paragraph summary you can repeat back
 
-On this single A5000, a 4B Q6_K model is bandwidth-bound on **decode** (lower-bit weights decode faster, up to 2.18× for Q4 vs BF16) and compute-bound on **prefill** (flat across quant). Serving many users, aggregate throughput climbs to a **broad plateau (C=32–64), peaks at ~802 tok/s at C=64, then declines** — because the bottleneck **leaves the GPU** (util median 94%→41%, power 229→168 W, 141 W at C=96) and the evidence **most strongly points to a host-side feed/orchestration bottleneck** (server-process CPU up ~11×; exact mechanism not isolated). VRAM is a non-issue (linear ~108 MiB/slot, board never fills before the peak). Per-user latency degrades ~20× the whole way up, so **"max throughput" and "good latency" are different operating points** — pick per SLO. The engine shootout **didn't happen** (vLLM crashed at warmup), and the "SVD-extract a LoRA" probe measures a **high-rank inter-checkpoint delta** that is at most *LoRA-representable* and refutes nothing about trained-LoRA quality. Never compare the closed-loop saturation numbers with the finite-user Locust numbers — they measure different worlds.
+On this single A5000, a 4B Q6_K model is bandwidth-bound on **decode** (lower-bit weights decode faster, up to 2.18× for Q4 vs BF16) and compute-bound on **prefill** (flat across quant). Serving many users, aggregate throughput climbs to a **broad plateau (C=32–64), peaks at ~802 tok/s at C=64, then declines** — because the bottleneck **leaves the GPU** (util median 94%→41%, power 229→168 W, 141 W at C=96) and the evidence **most strongly points to a host-side feed/orchestration bottleneck** (server-process CPU up ~11×; exact mechanism not isolated). VRAM is a non-issue (linear ~108 MiB/slot, board never fills before the peak). Per-user latency degrades ~20× the whole way up, so **"max throughput" and "good latency" are different operating points** — pick per SLO. But that whole story is the *short-chat* regime: the moment you open the **context window** and keep multi-turn sessions resident (§9), it **flips to VRAM-bound** — KV cache (f16 = 144 KiB/token; q8_0 = 53% of that) becomes the binding constraint, so "30 users" fits **only** as a q8_0-at-8k edge case (16k/32k and 100-anywhere don't fit), deep context taxes every decoded token (110→59 tok/s f16, d0→32k), and **prefix caching** is the non-optional multi-turn lever (cut TTFT ~6.8× in an indicative n=2 deep bucket, trends cross). At 30×8k the fit is real but slow — **fair-share 3.78 tok/s (agg/30), median per-request decode 5.7**, and 3/90 turns overflowed the window. On accuracy, a full-test wikitext perplexity sweep shows **Q6_K/Q8_0 practically indistinguishable from bf16** (≤0.014% point estimate; no paired significance test) and **Q4_K_M costs +2.42% PPL for 2.18× decode** — measured, but general-domain likelihood, not legal-task quality. The engine shootout **didn't happen** (vLLM crashed at warmup), and the "SVD-extract a LoRA" probe measures a **high-rank inter-checkpoint delta** that is at most *LoRA-representable* and refutes nothing about trained-LoRA quality. Never compare the closed-loop saturation numbers with the finite-user Locust numbers — they measure different worlds.
 ---
 
 ## Reproduction & provenance
@@ -476,12 +612,19 @@ them — the vLLM crash note and the E3 per-turn timing summary — is committed
 | E5 engine comparison (llama.cpp; vLLM crashed) | `results/engines/eng-20260721T002012Z/` |
 | E2/E3 Locust finite-user + context-growth | `results/locust/loc-20260721T005851Z/` |
 | SVD LoRA-extraction study | `results/extraction/` |
+| E6 context-window scaling (frontier + depth) | `results/context-20260721T023727Z/` |
+| E7 accuracy↔speed (full-test perplexity) | `results/accuracy-full-20260721T025541Z/` |
+| Multi-turn chatbot: 30×8k concurrent + single-user | `results/ctxchat-20260721T030352Z/` |
+| Multi-turn chatbot: prefix-cache A/B replay | `results/chatbot-20260721T024328Z/` |
 
 Pipeline: `./run.sh reproduce` (download → merge → build llama.cpp → convert →
 quantize → verify → benchmark). Sweeps: `scripts/sweep_concurrency.sh` (E1),
 `scripts/precision_sweep.sh` (E4), `scripts/engine_compare.sh` (E5),
-`scripts/locust_run.sh` (E2/E3), `scripts/svd_extract.py` (SVD). Reference rig:
-1× RTX A5000 24 GB, 2× Xeon Silver 4210R (40 threads), 125 GB RAM, PCIe Gen3 x16,
-driver CUDA 13.3, llama.cpp `91d2fc38`. Two codex-council reviews and a 5-agent
-analysis workflow informed this report; remaining overclaims were corrected per
-their findings.
+`scripts/locust_run.sh` (E2/E3), `scripts/svd_extract.py` (SVD),
+`scripts/context_sweep.sh` (E6), `scripts/perplexity.sh` (E7),
+`scripts/composite_sessions.py` + `scripts/mt_concurrent.py` +
+`scripts/multiturn_replay.py` (§9 chatbot). Data: `scripts/prepare_data.py`
+(wikitext-2 + UltraChat). Reference rig: 1× RTX A5000 24 GB, 2× Xeon Silver 4210R
+(40 threads), 125 GB RAM, PCIe Gen3 x16, driver CUDA 13.3, llama.cpp `91d2fc38`.
+Multiple adversarial review passes and multi-agent analysis workflows informed
+this report; remaining overclaims were corrected per their findings.

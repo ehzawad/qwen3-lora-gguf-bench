@@ -1,0 +1,20 @@
+{
+  "tag": "concurrent-16x8k-f16",
+  "target_ctx": 8192,
+  "concurrency": 16,
+  "measured_turns": 45,
+  "aggregate_output_tok_s": 135.0,
+  "aggregate_output_tok_min": 8102.0,
+  "per_user_output_tok_s": 8.44,
+  "prompt_tok_median": 7234,
+  "cache_hit_frac_median": 0.963,
+  "ttft_s": {
+    "p50": 0.2584609530167654,
+    "p95": 25.513041498023085,
+    "max": 29.364448563894257
+  },
+  "decode_tok_s_median": 13.2,
+  "vram_start_mib": 22204,
+  "vram_peak_mib": 22214,
+  "wall_s": 82.0
+}
