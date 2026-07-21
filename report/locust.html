@@ -1,0 +1,65 @@
+<title>Synthetic Finite-User Load & Context Growth (Locust)</title>
+<style>
+  :root{--ground:#f5f7fa;--panel:#fff;--ink:#171b24;--muted:#5a6474;--faint:#8b95a6;--line:#dde3ec;--gpu:#17998a;--gpu-soft:#d3ece8;--cpu:#c67e12;--cpu-soft:#f6e6c9;--bad:#c8443a;--shadow:0 1px 2px rgba(20,30,50,.06),0 8px 30px rgba(20,30,50,.06);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--serif:Georgia,"Iowan Old Style",serif}
+  @media(prefers-color-scheme:dark){:root{--ground:#0b0e14;--panel:#12161f;--ink:#e6e9f0;--muted:#9aa4b6;--faint:#6b7688;--line:#232a37;--gpu:#2fc7b3;--gpu-soft:#123330;--cpu:#e8a83e;--cpu-soft:#33270f;--bad:#e5675c;--shadow:0 1px 2px rgba(0,0,0,.4),0 10px 34px rgba(0,0,0,.35)}}
+  :root[data-theme="light"]{--ground:#f5f7fa;--panel:#fff;--ink:#171b24;--muted:#5a6474;--faint:#8b95a6;--line:#dde3ec;--gpu:#17998a;--gpu-soft:#d3ece8;--cpu:#c67e12;--cpu-soft:#f6e6c9}
+  :root[data-theme="dark"]{--ground:#0b0e14;--panel:#12161f;--ink:#e6e9f0;--muted:#9aa4b6;--faint:#6b7688;--line:#232a37;--gpu:#2fc7b3;--gpu-soft:#123330;--cpu:#e8a83e;--cpu-soft:#33270f}
+  *{box-sizing:border-box}body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--serif);font-size:18px;line-height:1.62;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}.col{max-width:68ch}a{color:var(--gpu)}
+  h1,h2,h3{font-family:var(--sans);line-height:1.15;text-wrap:balance;letter-spacing:-.015em}code,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .eyebrow{font-family:var(--sans);text-transform:uppercase;letter-spacing:.14em;font-size:12px;font-weight:650;color:var(--faint)}
+  .nav{font-family:var(--sans);font-size:13px;display:flex;gap:14px;flex-wrap:wrap;padding:16px 0;border-bottom:1px solid var(--line)}.nav a{color:var(--muted);text-decoration:none}.nav a.on{color:var(--gpu);font-weight:650}
+  header.hero{border-bottom:1px solid var(--line);background:radial-gradient(120% 140% at 100% -20%,var(--gpu-soft) 0,transparent 55%),radial-gradient(120% 140% at 0 -10%,var(--cpu-soft) 0,transparent 50%)}
+  .hero-in{padding:48px 0 34px}h1{font-size:clamp(27px,4.4vw,42px);font-weight:780;margin:12px 0 8px}.lede{font-size:19px;color:var(--muted);max-width:64ch;margin:0}
+  section{padding:38px 0;border-bottom:1px solid var(--line)}h2{font-size:clamp(22px,3vw,28px);font-weight:720;margin:0 0 14px}h3{font-family:var(--sans);font-size:17px;margin:24px 0 6px}.col p{margin:13px 0}
+  .tbl{overflow-x:auto;margin:20px 0;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:var(--shadow)}table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+  caption{text-align:left;font-family:var(--sans);font-size:13px;color:var(--muted);padding:12px 16px 0}th,td{padding:7px 13px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}
+  thead th{font-family:var(--sans);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:650}tbody tr:last-child td{border-bottom:none}
+  .callout{border-left:3px solid var(--gpu);background:var(--panel);border-radius:0 12px 12px 0;padding:14px 18px;margin:20px 0;font-size:16.5px;box-shadow:var(--shadow)}.callout.warn{border-color:var(--cpu)}.callout .lab{font-family:var(--sans);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);display:block;margin-bottom:4px}
+  .foot{padding:34px 0 64px;color:var(--muted);font-size:15px}.foot a{font-family:var(--mono);font-size:14px}
+</style>
+
+<header class="hero"><div class="wrap">
+  <div class="nav"><a href="index.html">◂ Field guide</a><a href="concurrency.html">Concurrency</a><a href="precision.html">Precision</a><a href="engines.html">Engines &amp; chatbot</a><a href="lora.html">LoRA &amp; SVD</a><a href="locust.html" class="on">Locust</a></div>
+  <div class="hero-in">
+    <div class="eyebrow">Studies E2 / E3 · Locust · finite-user think-time</div>
+    <h1>Synthetic finite-user load &amp; context growth</h1>
+    <p class="lede">Closer to real traffic than the barrier sweep — but still <b>closed-loop</b> (a finite user pool with think-time). Never compare these tok/s with the saturation numbers; they measure different worlds.</p>
+  </div>
+</div></header>
+
+<main class="wrap">
+  <section>
+    <h2>E2 — short-chat, fixed 64-slot server</h2>
+    <p class="col">Independent short prompts, think-time 1–4 s, natural sampling (temp 0.7, max 160 tok), ramped users. Steady-state token throughput counted only inside a declared window. <b>0 failures.</b></p>
+    <div class="tbl"><table>
+      <caption>E2 ShortChatUser — steady-state.</caption>
+      <thead><tr><th>Users</th><th>tok/s</th><th>tok/min</th><th>comp tok/req</th><th>TTFT p50 (ms)</th><th>e2e p50 (s)</th><th>req/s</th></tr></thead>
+      <tbody>
+        <tr><td>20</td><td>292.6</td><td>17,558</td><td>140.5</td><td>109</td><td>7.9</td><td>2.07</td></tr>
+        <tr><td>60</td><td>412.3</td><td>24,736</td><td>142.2</td><td>230</td><td>20.1</td><td>2.89</td></tr>
+      </tbody>
+    </table></div>
+    <p class="col">More users → more aggregate tok/s (292→412). TTFT stays low (~17-token prompts). e2e balloons 7.9→20.1 s — and since 60 users &lt; 64 slots, that's <b>not queueing</b> but per-slot decode collapse under heavier batching. Note: offered load is think-time-throttled (2.07 / 2.89 req/s), <b>not</b> a saturation ceiling.</p>
+  </section>
+
+  <section>
+    <h2>E3 — multi-turn growing context (20 slots, 4096 tok)</h2>
+    <p class="col">Each user grows a real conversation up to 8 turns, then resets. <b>Prompt caching was deliberately disabled</b> (<code>--no-cache-prompt</code>) — so the whole history is re-prefilled every turn (the worst case). Overall 205.9 tok/s, 4.3∶1 prefill∶decode token ratio, 0 failures.</p>
+    <div class="tbl"><table>
+      <caption>E3 per-turn end-to-end latency (client-side, from stats CSV).</caption>
+      <thead><tr><th>Turn</th><th>requests</th><th>median (ms)</th><th>avg (ms)</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>66</td><td>9,600</td><td>8,163</td></tr>
+        <tr><td>2</td><td>64</td><td>9,400</td><td>—</td></tr>
+        <tr><td>3–4</td><td>123</td><td>9,700 / 10,000</td><td>—</td></tr>
+        <tr><td>5–6</td><td>118</td><td>10,000</td><td>—</td></tr>
+        <tr><td>7</td><td>54</td><td>11,000</td><td>—</td></tr>
+        <tr><td>8</td><td>48</td><td>9,800</td><td>8,198</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout warn"><span class="lab">The teaching case</span>The scary metric (4.3∶1 prefill∶decode ratio) turns out <b>cheap in seconds</b>: prefill runs ~3,100 tok/s overall (up to ~4,200 at the longest turns) while decode runs ~13 tok/s effective, so re-prefill costs only ~40 → ~300 ms of TTFT and <b>barely moves the ~10 s decode-dominated e2e</b>. Always ask: <em>expensive in what units, and is that the bottleneck?</em> (In a real chatbot you'd turn prefix caching <b>on</b> — see <a href="engines.html">Engines &amp; chatbot</a> — and even this small tax largely vanishes.)</div>
+  </section>
+
+  <div class="col foot">Raw data: <code>results/locust/loc-20260721T005851Z/</code> (token-window JSON + per-turn summary). Locust auto-HTML reports are git-ignored.<br><a href="https://github.com/ehzawad/qwen3-lora-gguf-bench">github.com/ehzawad/qwen3-lora-gguf-bench</a></div>
+</main>

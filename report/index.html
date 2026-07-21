@@ -156,14 +156,16 @@
 
   <section>
     <div class="col">
-      <p style="font-size:16px;color:var(--muted);margin-top:8px">A 4B model at Q6_K is ~3.3&nbsp;GB — tiny against 24&nbsp;GB. So the question was never <em>"does it fit?"</em> It's <em>"how many users, how fast, and what breaks first?"</em> Everything below is measured on one rig; the caveats in §8 are the difference between seeing a number and understanding it. Two claims are flagged loudly throughout: the vLLM engine comparison <b>did not happen</b> (it crashed at warmup), and the "extract a LoRA with SVD" probe measures something subtler than its nickname.</p>
+      <p class="eyebrow" style="margin-bottom:8px">Deep-dive companion pages</p>
+      <p style="font-size:15.5px;margin-top:0"><a href="concurrency.html">Concurrency capacity</a> · <a href="precision.html">Precision knobs</a> · <a href="engines.html">Engines &amp; real-world chatbot</a> · <a href="lora.html">LoRA &amp; SVD probe</a> · <a href="locust.html">Locust finite-user load</a></p>
+      <p style="font-size:16px;color:var(--muted);margin-top:8px">A 4B model at Q6_K is ~3.3&nbsp;GB — tiny against 24&nbsp;GB. So the question was never <em>"does it fit?"</em> It's <em>"how many users, how fast, and what breaks first?"</em> Most of what follows is measured on one rig (§6 adds literature-sourced nuances, cited); the caveats in §8 are the difference between seeing a number and understanding it. Two claims are flagged loudly throughout: the vLLM engine comparison <b>did not happen</b> (it crashed at warmup), and the "extract a LoRA with SVD" probe measures something subtler than its nickname.</p>
     </div>
   </section>
 
   <section>
     <div class="sec-head"><span class="idx">§1</span><h2>Concurrency capacity — the core finding</h2></div>
     <div class="col">
-      <p><b>Method (label it precisely):</b> llama.cpp, closed-loop <em>barrier-synchronous</em> load, <code>ignore_eos</code>, fixed 256-token prompt / 256-token generation, <code>--parallel == C</code>, 768-token slots. This is a <b>saturation-capacity probe</b>, not a real arrival-pattern test — keep that for §6.</p>
+      <p><b>Method (label it precisely):</b> llama.cpp, closed-loop <em>barrier-synchronous</em> load, <code>ignore_eos</code>, ~242-token prompts (231–253) / exactly 256 generated, <code>--parallel == C</code>, 768-token slots. This is a <b>saturation-capacity probe</b>, not a real arrival-pattern test — keep that for §6.</p>
       <p>Aggregate throughput climbs to a broad plateau over <b>C = 32–64</b>, <b>peaks at C = 64 (801.8 tok/s)</b>, then <b>declines</b> to 749 by C = 128. There is no simple "knee at 30": the biggest single batching win is C8→C16 (+262 tok/s), and marginal gain goes <em>negative</em> past 64.</p>
     </div>
 
@@ -224,7 +226,7 @@
     </figure>
     <div class="col">
       <ul class="clean">
-        <li><b>Flash-attention: on, always.</b> +15–21% prefill, +4–9% decode — free.</li>
+        <li><b>Flash-attention: on</b> (this build/model). +15–21% prefill, +4–9% decode — effectively free here.</li>
         <li><b>KV-cache dtype is a memory knob, barely a speed knob.</b> <code>q8_0</code> KV halves the KV footprint for ~4% decode cost — worth it only when KV memory is the real constraint (long context / many slots), not at short single-stream.</li>
         <li><b>Choose weight quant by budget:</b> Q4_K_M if decode speed rules; Q6_K/Q8_0 if quality rules. Prefill barely cares about bit-width.</li>
       </ul>
@@ -235,7 +237,7 @@
   <section>
     <div class="sec-head"><span class="idx">§3</span><h2>Engine choice — and why this comparison is <span style="color:var(--bad)">void</span></h2></div>
     <div class="callout void"><span class="lab">Do not violate this</span><b>The llama.cpp-vs-vLLM comparison did not happen.</b> vLLM 0.25.1 loaded the model, then <code>EngineCore</code> died at <code>kernel_warmup</code> with a Triton JIT parse bug — <b>0 requests served</b>. No winner, ratio, or latency delta between engines can be stated; the hypothesis is untested, not refuted. And it wouldn't have been iso-precision anyway (llama.cpp Q6_K 6-bit vs vLLM bf16 16-bit).</div>
-    <div class="col"><p>The llama.cpp side did run cleanly on a fixed 100-slot server (below). It independently reproduces §1: sublinear scaling (6.4× for 100× clients), sharp tail-latency growth, and the same bursty/host-bound signature (GPU util 93%→41% while p95 pins at 99%). Note C=30 here is only <b>370 tok/s</b> — half of §1's dedicated-30-slot 720. This cross-run difference is real and consistent with over-provisioning overhead (99 idle slots at C=30), though the exact cause wasn't isolated — a reason to right-size slots to expected load.</p></div>
+    <div class="col"><p>The llama.cpp side did run cleanly on a fixed 100-slot server (below). It independently reproduces §1: sublinear scaling (6.4× for 100× clients), sharp tail-latency growth, and the same bursty/host-bound signature (GPU util 93%→41% while p95 pins at 99%). Note C=30 here is only <b>370 tok/s</b> — half of §1's dedicated-30-slot 720. This cross-run difference is real and consistent with over-provisioning overhead (70 idle slots at C=30), though the exact cause wasn't isolated — a reason to right-size slots to expected load.</p></div>
     <div class="tbl-scroll"><table>
       <caption>E5 — llama.cpp Q6_K, fixed 100-slot deployment (vLLM omitted; crashed).</caption>
       <thead><tr><th>Engine</th><th class="n">C</th><th class="n">tok/s</th><th class="n">TTFT p99 (s)</th><th class="n">Lat p50 (s)</th><th>Status</th></tr></thead>
@@ -275,7 +277,7 @@
 
   <section>
     <div class="sec-head"><span class="idx">§5</span><h2>Synthetic finite-user load (Locust) — closed-loop, not real traffic</h2></div>
-    <div class="col"><p>The nearest thing here to "real traffic": a finite pool of users with think-time between requests. Still <b>closed-loop</b> — user count is an <em>upper bound</em> on in-flight concurrency, and offered load is throttled by the pool, not pushed to saturation. <b>Never</b> compare these tok/s with the §1 saturation numbers; they measure different worlds.</p></div>
+    <div class="col"><p>More traffic-like than the barrier sweep, but <b>not real traffic</b>: a finite pool of users with think-time between requests. Still <b>closed-loop</b> — user count is an <em>upper bound</em> on in-flight concurrency, and offered load is throttled by the pool, not pushed to saturation. <b>Never</b> compare these tok/s with the §1 saturation numbers; they measure different worlds.</p></div>
     <div class="tbl-scroll"><table>
       <caption>E2 short-chat (fixed 64 slots) and E3 multi-turn growing context (20 slots, 4096-tok).</caption>
       <thead><tr><th>Run</th><th class="n">Steady tok/s</th><th class="n">TTFT p50 (ms)</th><th class="n">e2e p50 (s)</th><th class="n">Note</th></tr></thead>
@@ -285,7 +287,7 @@
         <tr><td>E3 · 20 users · 8 turns</td><td class="n">205.9</td><td class="n">247</td><td class="n">10.2</td><td>4.3 : 1 prefill : decode</td></tr>
       </tbody>
     </table></div>
-    <div class="col"><p><b>The E3 teaching case:</b> re-prefilling the whole growing history every turn produces a scary 4.3 : 1 prefill : decode <em>token</em> ratio — but prefill runs ~4,200 tok/s while decode runs ~13 tok/s effective, so the "tax" costs only ~40 → ~300 ms of TTFT and <b>barely moves the ~10 s decode-dominated latency</b>. Always ask: expensive in what units, and is that the bottleneck?</p></div>
+    <div class="col"><p><b>The E3 teaching case:</b> re-prefilling the whole growing history every turn produces a scary 4.3 : 1 prefill : decode <em>token</em> ratio — but prefill runs ~3,100 tok/s overall (up to ~4,200 at the longest turns) while decode runs ~13 tok/s effective, so the "tax" costs only ~40 → ~300 ms of TTFT and <b>barely moves the ~10 s decode-dominated latency</b>. Always ask: expensive in what units, and is that the bottleneck?</p></div>
   </section>
 
   <section>
@@ -293,10 +295,10 @@
     <div class="col">
       <p>Everything above measured raw serving capacity on <em>one</em> engine. A production chatbot cares about different things. This section is grounded in the 2025–2026 literature (cited), not our own measurement.</p>
       <ul class="clean">
-        <li><b>Prefix caching is the #1 chatbot lever.</b> Real chats are multi-turn: the system prompt + history is a huge <em>shared prefix</em>, each new turn a tiny suffix. With prefix caching (automatic in <a href="https://vllm.ai/blog/2025-09-05-anatomy-of-vllm">vLLM</a>/SGLang) only the new turn is prefilled. Our <b>E3 deliberately disabled it</b> (<code>--no-cache-prompt</code>) — the worst case; multi-turn KV reuse cuts P99 TTFT up to <b>−69%</b> (<a href="https://arxiv.org/abs/2606.16135">SwiftCache</a>).</li>
+        <li><b>Prefix caching is the #1 chatbot lever.</b> Real chats are multi-turn: the system prompt + history is a huge <em>shared prefix</em>, each new turn a tiny suffix. With prefix caching (automatic in <a href="https://vllm.ai/blog/2025-09-05-anatomy-of-vllm">vLLM</a>/SGLang) only the uncached suffix is prefilled. Our <b>E3 deliberately disabled it</b> (<code>--no-cache-prompt</code>) — the worst case; one multi-turn KV-reuse system cuts P99 TTFT up to <b>−69% vs vLLM/SGLang KV-cache baselines</b> (<a href="https://arxiv.org/abs/2606.16135">SwiftCache</a>).</li>
         <li><b>TTFT &amp; TPOT beat aggregate throughput for UX.</b> At our peak (C=64) aggregate tok/s is maximal but each user waits ~20 s. The production metric is <b>goodput</b> (requests meeting a latency SLO), not raw throughput.</li>
-        <li><b>llama.cpp vs vLLM — with a caveat on the scary numbers.</b> vLLM (PagedAttention + native continuous batching + prefix caching + speculative decoding) is built for many concurrent users; a <a href="https://developers.redhat.com/articles/2026/06/15/llamacpp-vs-vllm-choosing-right-local-llm-inference-engine">Red&nbsp;Hat test</a> cites ~44× tok/s and stable sub-second TTFT at 64 users vs a llama.cpp config whose TTFT exceeded 180 s. <b>But that gap is config-dependent:</b> our <em>properly-tuned</em> llama.cpp (<code>-cb</code>) had p99 TTFT ~7.5 s at C=128 — it still hit a host-bound wall (peak then decline), which is exactly what vLLM's scheduler is engineered to push past. Direction real; magnitude overstated for a well-tuned llama.cpp. We couldn't measure vLLM here (it crashed).</li>
-        <li><b>Speed ≠ accuracy — we measured only speed.</b> Q4_K_M decodes 2.18× BF16 but at a quality cost: literature puts Q6_K near-lossless, Q4_K_M ~92%, and on GPU engines <b>AWQ (~95%) &gt; GPTQ (~90%)</b> at 4-bit (<a href="https://ai.rs/ai-developer/quantization-methods-compared">ai.rs</a>). FP8 needs Ada/Hopper, not our A5000.</li>
+        <li><b>llama.cpp vs vLLM — with a caveat on the scary numbers.</b> vLLM (PagedAttention + native continuous batching + prefix caching + speculative decoding) is built for many concurrent users; a <a href="https://developers.redhat.com/articles/2026/06/15/llamacpp-vs-vllm-choosing-right-local-llm-inference-engine">Red&nbsp;Hat test</a> cites ~44× tok/s and stable sub-second TTFT at 64 users vs a llama.cpp config whose TTFT exceeded 180 s — <b>but that test used Llama-3.1-8B at full precision on one H200</b> (very different from our 4B/Q6_K/A5000), and the source calls it workload-specific, not a general verdict. <b>The gap is config-dependent:</b> our <code>-cb</code>, <code>--parallel==C</code> llama.cpp had p99 TTFT ~7.5 s at C=128, yet still hit a host-bound wall (peak then decline). vLLM's scheduler + PagedAttention are <em>designed to</em> improve high-concurrency serving; <b>whether vLLM would push past <em>this rig's</em> wall is unmeasured — it crashed at warmup. No engine winner is stated.</b></li>
+        <li><b>Speed ≠ accuracy — we measured only speed.</b> Q4_K_M decodes 2.18× BF16 at a quality cost (no single universal "quality %" — it's model/task/calibration dependent): Q6_K has a small model-specific perplexity delta (near-lossless for most uses); at 4-bit, GGUF-Q4/AWQ/GPTQ are close and the <a href="https://arxiv.org/abs/2306.00978">AWQ paper</a> reports AWQ often matches/beats GPTQ in its settings (~1.45× kernel speedup) — <b>validate on your task</b>. FP8: the A5000 lacks native FP8 W8A8 acceleration (needs Ada/Hopper), though Ampere runs FP8 weight-only via Marlin.</li>
         <li><b>2025–26 levers that matter more than kernel speed:</b> speculative decoding, chunked prefill, prefix caching, and <a href="https://docs.vllm.ai/en/latest/features/disagg_prefill/">disaggregated prefill/decode</a> — mostly mature in vLLM/SGLang; llama.cpp has speculative decoding + slot prompt-cache, not the full suite.</li>
       </ul>
       <div class="callout"><b>Bottom line for a chatbot:</b> our numbers are the <b>floor</b> — one engine, no prefix cache, no speculative decoding. On the right engine with prefix caching on, a multi-turn chatbot has far lower TTFT under load and higher usable concurrency. <b>Production multi-user chatbot → vLLM/SGLang; single-user, edge, prototype, or CPU/mixed → llama.cpp.</b></div>
@@ -312,9 +314,9 @@
         <tr><td>Lowest latency per user</td><td>Concurrency C ≤ 4, over-provision</td><td>fair-share 118→73 tok/s, p50 2–3.5 s</td></tr>
         <tr><td>Max total throughput</td><td>C ≈ 48–64 (~789–802 tok/s)</td><td>peak at 64; 32–64 all ≥93% of peak</td></tr>
         <tr><td>Balanced tok/s + latency</td><td>C ≈ 24–32</td><td>efficient region ends here; p50 ~9–11 s</td></tr>
-        <tr><td>Avoid waste</td><td>Do not exceed C ≈ 64</td><td>throughput <em>declines</em> beyond — you pay CPU for nothing</td></tr>
+        <tr><td>Avoid waste</td><td>Don't exceed C ≈ 64 <em>(this rig/build/model)</em></td><td>throughput <em>declines</em> beyond — you pay host-side overhead for nothing</td></tr>
         <tr><td>Fastest decode / tok per byte</td><td>Quantize weights low (Q4_K_M)</td><td>decode bandwidth-bound; 2.18× BF16</td></tr>
-        <tr><td>Best quality in budget</td><td>Q6_K or Q8_0 (default: Q6_K)</td><td>prefill flat, so higher bits cost little there</td></tr>
+        <tr><td>Higher-precision candidate</td><td>Q6_K or Q8_0 (default Q6_K) — validate quality on your task</td><td>prefill flat, so higher bits cost little there; we measured speed, not quality</td></tr>
         <tr><td>Any config</td><td>Flash-attention ON</td><td>+15–21% prefill, free</td></tr>
         <tr><td>Sizing VRAM</td><td>~3.5 GiB + 108 MiB × slots</td><td>linear preallocation (R²=1.0); never the binding limit</td></tr>
         <tr><td>llama.cpp vs vLLM</td><td>Benchmark it yourself, iso-precision</td><td>vLLM crashed here — no comparison exists</td></tr>
@@ -338,7 +340,7 @@
 
   <div class="col foot">
     <hr class="soft">
-    <p>Reproducible pipeline and every raw result file are in the repository. Two codex-council reviews and a 5-agent analysis workflow informed this guide; flagged overclaims were corrected against the raw JSON.</p>
+    <p>Reproducible pipeline and the result JSON/CSV are in the repository (raw per-slot server logs are gitignored; the derived evidence that depends on them is committed). Three independent adversarial review passes and a 5-agent analysis workflow informed this guide; flagged overclaims were corrected against the raw data.</p>
     <p><a href="https://github.com/ehzawad/qwen3-lora-gguf-bench">github.com/ehzawad/qwen3-lora-gguf-bench</a></p>
   </div>
 </main>

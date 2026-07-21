@@ -1,0 +1,88 @@
+<title>Precision & Hyperparameter Knobs — What Moves the Needle</title>
+<style>
+  :root{--ground:#f5f7fa;--panel:#fff;--ink:#171b24;--muted:#5a6474;--faint:#8b95a6;--line:#dde3ec;--line2:#c4cdda;--gpu:#17998a;--gpu-soft:#d3ece8;--cpu:#c67e12;--cpu-soft:#f6e6c9;--bad:#c8443a;--shadow:0 1px 2px rgba(20,30,50,.06),0 8px 30px rgba(20,30,50,.06);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--serif:Georgia,"Iowan Old Style",serif}
+  @media(prefers-color-scheme:dark){:root{--ground:#0b0e14;--panel:#12161f;--ink:#e6e9f0;--muted:#9aa4b6;--faint:#6b7688;--line:#232a37;--line2:#313a4b;--gpu:#2fc7b3;--gpu-soft:#123330;--cpu:#e8a83e;--cpu-soft:#33270f;--bad:#e5675c;--shadow:0 1px 2px rgba(0,0,0,.4),0 10px 34px rgba(0,0,0,.35)}}
+  :root[data-theme="light"]{--ground:#f5f7fa;--panel:#fff;--ink:#171b24;--muted:#5a6474;--faint:#8b95a6;--line:#dde3ec;--gpu:#17998a;--gpu-soft:#d3ece8;--cpu:#c67e12;--cpu-soft:#f6e6c9;--bad:#c8443a}
+  :root[data-theme="dark"]{--ground:#0b0e14;--panel:#12161f;--ink:#e6e9f0;--muted:#9aa4b6;--faint:#6b7688;--line:#232a37;--gpu:#2fc7b3;--gpu-soft:#123330;--cpu:#e8a83e;--cpu-soft:#33270f;--bad:#e5675c}
+  *{box-sizing:border-box}body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--serif);font-size:18px;line-height:1.62;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}.col{max-width:68ch}a{color:var(--gpu)}
+  h1,h2,h3{font-family:var(--sans);line-height:1.15;text-wrap:balance;letter-spacing:-.015em}code,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .eyebrow{font-family:var(--sans);text-transform:uppercase;letter-spacing:.14em;font-size:12px;font-weight:650;color:var(--faint)}
+  .nav{font-family:var(--sans);font-size:13px;display:flex;gap:14px;flex-wrap:wrap;padding:16px 0;border-bottom:1px solid var(--line)}.nav a{color:var(--muted);text-decoration:none}.nav a.on{color:var(--gpu);font-weight:650}
+  header.hero{border-bottom:1px solid var(--line);background:radial-gradient(120% 140% at 100% -20%,var(--gpu-soft) 0,transparent 55%),radial-gradient(120% 140% at 0 -10%,var(--cpu-soft) 0,transparent 50%)}
+  .hero-in{padding:48px 0 34px}h1{font-size:clamp(28px,4.6vw,44px);font-weight:780;margin:12px 0 8px}.lede{font-size:19px;color:var(--muted);max-width:62ch;margin:0}
+  .statstrip{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 15px;box-shadow:var(--shadow);min-width:120px}
+  .stat b{font-family:var(--mono);font-size:22px;font-weight:680;display:block}.stat.gpu b{color:var(--gpu)}.stat.cpu b{color:var(--cpu)}.stat span{font-family:var(--sans);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+  section{padding:38px 0;border-bottom:1px solid var(--line)}h2{font-size:clamp(22px,3vw,28px);font-weight:720;margin:0 0 14px}h3{font-family:var(--sans);font-size:17px;margin:22px 0 6px}.col p{margin:13px 0}
+  .chart{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 18px 10px;box-shadow:var(--shadow);margin:22px 0}.chart h4{font-family:var(--sans);font-size:15px;margin:0 0 2px}.chart .sub{font-family:var(--sans);font-size:13px;color:var(--muted);margin:0 0 8px}
+  svg{display:block;width:100%;height:auto;overflow:visible}.grid{stroke:var(--line)}.axlab{font-family:var(--sans);font-size:11px;fill:var(--faint)}.dotlab{font-family:var(--mono);font-size:12px;fill:var(--ink)}
+  .tbl{overflow-x:auto;margin:20px 0;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:var(--shadow)}table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+  caption{text-align:left;font-family:var(--sans);font-size:13px;color:var(--muted);padding:12px 16px 0}th,td{padding:7px 13px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}
+  thead th{font-family:var(--sans);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:650}tbody tr:last-child td{border-bottom:none}tr.peak td{background:var(--gpu-soft);font-weight:680}
+  .callout{border-left:3px solid var(--gpu);background:var(--panel);border-radius:0 12px 12px 0;padding:14px 18px;margin:20px 0;font-size:16.5px;box-shadow:var(--shadow)}.callout .lab{font-family:var(--sans);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);display:block;margin-bottom:4px}
+  ul.clean{padding-left:1.1em}ul.clean li{margin:8px 0}.foot{padding:34px 0 64px;color:var(--muted);font-size:15px}.foot a{font-family:var(--mono);font-size:14px}
+</style>
+
+<header class="hero"><div class="wrap">
+  <div class="nav"><a href="index.html">◂ Field guide</a><a href="concurrency.html">Concurrency</a><a href="precision.html" class="on">Precision</a><a href="engines.html">Engines &amp; chatbot</a><a href="lora.html">LoRA &amp; SVD</a></div>
+  <div class="hero-in">
+    <div class="eyebrow">Study E4 · llama-bench · single-stream kernel throughput</div>
+    <h1>Precision knobs — decode is bandwidth-bound, prefill isn't</h1>
+    <p class="lede">Two opposite lessons from the same sweep: lower-bit weights make <em>decode</em> faster (up to 2.18×), while <em>prefill</em> barely cares about bit-width.</p>
+    <div class="statstrip">
+      <div class="stat gpu"><b>168</b><span>Q4_K_M decode tok/s</span></div>
+      <div class="stat cpu"><b>77</b><span>bf16 decode tok/s</span></div>
+      <div class="stat"><b>2.18×</b><span>Q4 vs bf16 decode</span></div>
+      <div class="stat"><b>~4%</b><span>q8_0 KV speed cost</span></div>
+    </div>
+  </div>
+</div></header>
+
+<main class="wrap">
+  <section><div class="col">
+    <p>These are <b>single-stream <code>llama-bench</code></b> micro-benchmarks — raw kernel throughput (<code>pp512</code> = prefill, <code>tg128</code> = decode; no HTTP, no sampling, no real prompts). A different quantity from the server numbers in the <a href="concurrency.html">concurrency study</a> — don't cross the streams. <b>Caveat:</b> 3 samples/point, the first a cold outlier — read prefill as "flat," not a fine ordering.</p>
+  </div>
+    <div class="chart"><h4>Decode tok/s falls monotonically with weight size</h4><p class="sub">Q4_K_M (2.32 GB) → bf16 (7.49 GB). Decode reads every weight per token ⇒ bandwidth-bound.</p><div id="q"></div></div>
+    <div class="tbl"><table>
+      <caption>Weight quant × phase (f16 KV, flash-attn on).</caption>
+      <thead><tr><th>Weight</th><th>GGUF size</th><th>Prefill pp512 tok/s</th><th>Decode tg128 tok/s</th></tr></thead>
+      <tbody>
+        <tr class="peak"><td>Q4_K_M</td><td>2.32 GiB</td><td>5,901</td><td>168.0</td></tr>
+        <tr><td>Q5_K_M</td><td>2.69 GiB</td><td>5,948</td><td>155.2</td></tr>
+        <tr><td>Q6_K <span style="color:var(--muted)">(deployed)</span></td><td>3.07 GiB</td><td>5,534</td><td>133.3</td></tr>
+        <tr><td>Q8_0</td><td>3.98 GiB</td><td>6,497</td><td>125.4</td></tr>
+        <tr><td>BF16</td><td>7.49 GiB</td><td>6,223</td><td>77.0</td></tr>
+      </tbody>
+    </table></div>
+    <p class="col"><b>Prefill</b> ranges 5,534–6,497 with <em>no</em> bit-width ordering (BF16 out-prefills Q6_K) — it's a big batched GEMM, so it's <b>compute-bound</b>. Only decode is bandwidth-bound.</p>
+  </section>
+
+  <section>
+    <h2>The other two knobs</h2>
+    <div class="tbl"><table>
+      <caption>KV-cache dtype at Q6_K (matched K/V, flash-attn on, tg128).</caption>
+      <thead><tr><th>KV dtype</th><th>Prefill pp512</th><th>Decode tg128</th><th>KV memory</th></tr></thead>
+      <tbody>
+        <tr class="peak"><td>f16</td><td>5,386</td><td>128.6</td><td>16-bit (baseline)</td></tr>
+        <tr><td>bf16</td><td>5,297</td><td>124.0</td><td>16-bit (same)</td></tr>
+        <tr><td>q8_0</td><td>5,167</td><td>123.9</td><td>~8-bit (~½)</td></tr>
+      </tbody>
+    </table></div>
+    <ul class="col clean">
+      <li><b>KV dtype is a memory knob, barely a speed knob.</b> <code>q8_0</code> KV halves the footprint for only ~4% decode cost — worth it only when KV memory is the real constraint (long context / many slots), not at short single-stream. <code>bf16</code> KV showed no advantage here.</li>
+      <li><b>Flash-attention: on</b> (this build/model). +15–21% prefill, +4–9% decode — effectively free here.</li>
+    </ul>
+    <div class="callout"><span class="lab">Speed vs accuracy — we measured only speed</span>Q4_K_M's 2.18× decode win carries a <b>quality</b> cost we did not measure. From the literature (no single universal "quality %"): Q6_K is near-lossless; at 4-bit, GGUF-Q4/AWQ/GPTQ are close and depend on model/task/calibration (AWQ often matches/beats GPTQ per its paper, ~1.45× kernel speedup). <b>Validate quality on your task before dropping bits.</b> See <a href="engines.html">Engines &amp; chatbot</a> for the FP8/AWQ engine angle.</div>
+  </section>
+
+  <div class="col foot">Raw data: <code>results/precision-20260720T191131Z/</code>.<br><a href="https://github.com/ehzawad/qwen3-lora-gguf-bench">github.com/ehzawad/qwen3-lora-gguf-bench</a></div>
+</main>
+
+<script>
+(function(){const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();const NS="http://www.w3.org/2000/svg";function el(n,a){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);return e}
+const lab=["Q4_K_M","Q5_K_M","Q6_K","Q8_0","BF16"],val=[168.0,155.2,133.3,125.4,77.0];
+const W=900,H=320,m={t:16,r:16,b:40,l:48},iw=W-m.l-m.r,ih=H-m.t-m.b;const s=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img"});document.getElementById("q").appendChild(s);
+for(let i=0;i<=4;i++){const v=180*i/4,y=m.t+ih-ih*i/4;s.appendChild(el("line",{x1:m.l,y1:y,x2:m.l+iw,y2:y,class:"grid"}));s.appendChild(el("text",{x:m.l-8,y:y+4,class:"axlab","text-anchor":"end"})).textContent=Math.round(v)}
+const n=val.length,gap=iw/n,bw=gap*.6;val.forEach((v,i)=>{const x=m.l+gap*i+(gap-bw)/2,h=v/180*ih,y=m.t+ih-h,c=i===0?css("--gpu"):(i===n-1?css("--cpu"):css("--gpu"));s.appendChild(el("rect",{x,y,width:bw,height:h,rx:4,fill:c,opacity:i===0||i===n-1?1:.5}));s.appendChild(el("text",{x:x+bw/2,y:y-7,class:"dotlab","text-anchor":"middle"})).textContent=v.toFixed(0);s.appendChild(el("text",{x:x+bw/2,y:m.t+ih+20,class:"axlab","text-anchor":"middle"})).textContent=lab[i]});
+})();
+</script>

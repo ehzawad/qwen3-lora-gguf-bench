@@ -1,0 +1,81 @@
+<title>Engines & Real-World Chatbots — llama.cpp vs vLLM</title>
+<style>
+  :root{--ground:#f5f7fa;--panel:#fff;--ink:#171b24;--muted:#5a6474;--faint:#8b95a6;--line:#dde3ec;--gpu:#17998a;--gpu-soft:#d3ece8;--cpu:#c67e12;--cpu-soft:#f6e6c9;--bad:#c8443a;--shadow:0 1px 2px rgba(20,30,50,.06),0 8px 30px rgba(20,30,50,.06);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--serif:Georgia,"Iowan Old Style",serif}
+  @media(prefers-color-scheme:dark){:root{--ground:#0b0e14;--panel:#12161f;--ink:#e6e9f0;--muted:#9aa4b6;--faint:#6b7688;--line:#232a37;--gpu:#2fc7b3;--gpu-soft:#123330;--cpu:#e8a83e;--cpu-soft:#33270f;--bad:#e5675c;--shadow:0 1px 2px rgba(0,0,0,.4),0 10px 34px rgba(0,0,0,.35)}}
+  :root[data-theme="light"]{--ground:#f5f7fa;--panel:#fff;--ink:#171b24;--muted:#5a6474;--faint:#8b95a6;--line:#dde3ec;--gpu:#17998a;--gpu-soft:#d3ece8;--cpu:#c67e12;--cpu-soft:#f6e6c9;--bad:#c8443a}
+  :root[data-theme="dark"]{--ground:#0b0e14;--panel:#12161f;--ink:#e6e9f0;--muted:#9aa4b6;--faint:#6b7688;--line:#232a37;--gpu:#2fc7b3;--gpu-soft:#123330;--cpu:#e8a83e;--cpu-soft:#33270f;--bad:#e5675c}
+  *{box-sizing:border-box}body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--serif);font-size:18px;line-height:1.62;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}.col{max-width:68ch}a{color:var(--gpu)}
+  h1,h2,h3{font-family:var(--sans);line-height:1.15;text-wrap:balance;letter-spacing:-.015em}code,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .eyebrow{font-family:var(--sans);text-transform:uppercase;letter-spacing:.14em;font-size:12px;font-weight:650;color:var(--faint)}
+  .nav{font-family:var(--sans);font-size:13px;display:flex;gap:14px;flex-wrap:wrap;padding:16px 0;border-bottom:1px solid var(--line)}.nav a{color:var(--muted);text-decoration:none}.nav a.on{color:var(--gpu);font-weight:650}
+  header.hero{border-bottom:1px solid var(--line);background:radial-gradient(120% 140% at 100% -20%,var(--gpu-soft) 0,transparent 55%),radial-gradient(120% 140% at 0 -10%,var(--cpu-soft) 0,transparent 50%)}
+  .hero-in{padding:48px 0 34px}h1{font-size:clamp(28px,4.6vw,44px);font-weight:780;margin:12px 0 8px}.lede{font-size:19px;color:var(--muted);max-width:64ch;margin:0}
+  section{padding:38px 0;border-bottom:1px solid var(--line)}h2{font-size:clamp(22px,3vw,28px);font-weight:720;margin:0 0 14px}h3{font-family:var(--sans);font-size:17px;margin:24px 0 6px}.col p{margin:13px 0}
+  .tbl{overflow-x:auto;margin:20px 0;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:var(--shadow)}table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+  caption{text-align:left;font-family:var(--sans);font-size:13px;color:var(--muted);padding:12px 16px 0}th,td{padding:7px 13px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}
+  thead th{font-family:var(--sans);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:650}tbody tr:last-child td{border-bottom:none}tr.dim td{color:var(--muted)}
+  .tag{font-family:var(--sans);font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px}.tag.gpu{background:var(--gpu-soft);color:var(--gpu)}.tag.void{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
+  .callout{border-left:3px solid var(--gpu);background:var(--panel);border-radius:0 12px 12px 0;padding:14px 18px;margin:20px 0;font-size:16.5px;box-shadow:var(--shadow)}.callout.void{border-color:var(--bad)}.callout .lab{font-family:var(--sans);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);display:block;margin-bottom:4px}
+  ul.clean{padding-left:1.1em}ul.clean li{margin:9px 0}.foot{padding:34px 0 64px;color:var(--muted);font-size:15px}.foot a{font-family:var(--mono);font-size:14px}
+  .cols2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0}@media(max-width:680px){.cols2{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow)}.card h3{margin-top:4px}
+</style>
+
+<header class="hero"><div class="wrap">
+  <div class="nav"><a href="index.html">◂ Field guide</a><a href="concurrency.html">Concurrency</a><a href="precision.html">Precision</a><a href="engines.html" class="on">Engines &amp; chatbot</a><a href="lora.html">LoRA &amp; SVD</a></div>
+  <div class="hero-in">
+    <div class="eyebrow">Study E5 + literature review · what a real chatbot actually needs</div>
+    <h1>Engines &amp; real-world chatbots</h1>
+    <p class="lede">Our vLLM benchmark crashed — so the engine shootout is <b>void</b>, not a winner. But the literature is clear on what matters for a production chatbot, and it reframes every number in this suite.</p>
+  </div>
+</div></header>
+
+<main class="wrap">
+  <section>
+    <h2>E5 — the engine comparison is <span style="color:var(--bad)">void</span></h2>
+    <div class="callout void"><span class="lab">Do not violate this</span><b>vLLM served 0 requests.</b> vLLM 0.25.1 loaded the model, then <code>EngineCore</code> died at <code>kernel_warmup</code> with a Triton JIT parse bug (persisted with <code>--enforce-eager</code>). <b>No llama.cpp-vs-vLLM winner, ratio, or latency delta can be stated</b> — the hypothesis is untested. Precision would also have been mismatched (llama.cpp Q6_K 6-bit vs vLLM bf16 16-bit).</div>
+    <div class="tbl"><table>
+      <caption>llama.cpp ran cleanly on a fixed 100-slot server; vLLM omitted.</caption>
+      <thead><tr><th>Engine</th><th>C</th><th>tok/s</th><th>TTFT p99 (s)</th><th>Lat p50 (s)</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>llama.cpp Q6_K</td><td>1</td><td>118.1</td><td>0.08</td><td>2.17</td><td><span class="tag gpu">20/0 ok</span></td></tr>
+        <tr><td>llama.cpp Q6_K</td><td>30</td><td>370.5</td><td>1.70</td><td>22.1</td><td><span class="tag gpu">600/0 ok</span></td></tr>
+        <tr><td>llama.cpp Q6_K</td><td>100</td><td>753.1</td><td>5.29</td><td>33.6</td><td><span class="tag gpu">2000/0 ok</span></td></tr>
+        <tr class="dim"><td>vLLM bf16</td><td>1/30/100</td><td>—</td><td>—</td><td>—</td><td><span class="tag void">0 requests · never listened</span></td></tr>
+      </tbody>
+    </table></div>
+    <p class="col">One real finding: at fixed 100 slots, C=30 gives only <b>370 tok/s</b> vs 720 with dedicated 30 slots (<a href="concurrency.html">§ concurrency</a>) — consistent with over-provisioning overhead (70 idle slots), though the cause wasn't isolated. Right-size slots to expected load.</p>
+  </section>
+
+  <section>
+    <h2>What a real chatbot needs <span style="font-family:var(--serif);font-weight:400;font-size:.6em;color:var(--muted)">(from the 2025–2026 literature — not our measurement)</span></h2>
+
+    <h3>Prefix caching is the top lever for multi-turn</h3>
+    <p class="col">Real chats are multi-turn: the system prompt + history is a huge <b>shared prefix</b>, each new turn a tiny suffix. With prefix caching (automatic in <a href="https://vllm.ai/blog/2025-09-05-anatomy-of-vllm">vLLM</a>/SGLang) only the uncached suffix is prefilled. <b>Our <a href="locust.html">E3</a> deliberately disabled it</b> (<code>--no-cache-prompt</code>) — measuring the worst case (4.3∶1 prefill∶decode). One multi-turn KV-reuse system cuts P99 TTFT up to <b>−69% vs vLLM/SGLang KV-cache baselines</b> (<a href="https://arxiv.org/abs/2606.16135">SwiftCache</a>). Enable it before tuning anything else.</p>
+
+    <h3>TTFT &amp; TPOT beat aggregate throughput for UX</h3>
+    <p class="col">TTFT = time to first token; TPOT = inter-token latency (streaming smoothness). At our throughput peak (C=64) aggregate tok/s is maximal but each user waits ~20 s. The production metric is <b>goodput</b> — requests meeting a latency SLO — not raw throughput. Pick your operating point from an SLO.</p>
+
+    <div class="cols2">
+      <div class="card"><h3>Use vLLM / SGLang when…</h3><ul class="clean" style="font-size:15.5px">
+        <li>many concurrent users on a GPU, latency SLAs</li>
+        <li>you want PagedAttention + native continuous batching + prefix caching + speculative decoding</li>
+        <li>native multi-LoRA (many adapters, one base)</li>
+      </ul></div>
+      <div class="card"><h3>Use llama.cpp when…</h3><ul class="clean" style="font-size:15.5px">
+        <li>single-user desktop / edge / offline</li>
+        <li>a quick prototype or model-swapping via GGUF</li>
+        <li>CPU or mixed hardware, trivial deployment</li>
+      </ul></div>
+    </div>
+
+    <div class="callout"><span class="lab">The caveat on the scary numbers</span>A <a href="https://developers.redhat.com/articles/2026/06/15/llamacpp-vs-vllm-choosing-right-local-llm-inference-engine">Red&nbsp;Hat test</a> cites ~44× tok/s and stable sub-second TTFT at 64 users for vLLM — <b>but that used Llama-3.1-8B full-precision on one H200</b> (very different from our 4B/Q6_K/A5000), and the source calls it config-specific. Our <code>-cb</code>, <code>--parallel==C</code> llama.cpp had p99 TTFT ~7.5 s at C=128 (not 180 s), yet still hit a host-bound wall. vLLM's scheduler is <em>designed to</em> improve high-concurrency serving; <b>whether it would push past this rig's wall is unmeasured</b> — no engine winner is stated.</div>
+
+    <h3>Speed vs accuracy, and the latest levers</h3>
+    <p class="col">Quantization: Q6_K near-lossless; at 4-bit, GGUF-Q4/AWQ/GPTQ are close and model/task/calibration-dependent (AWQ often matches/beats GPTQ per its <a href="https://arxiv.org/abs/2306.00978">paper</a>, ~1.45× kernel speedup). FP8: the A5000 lacks native FP8 W8A8 acceleration (needs Ada/Hopper), though Ampere runs FP8 weight-only via Marlin. The 2025–26 levers — <b>speculative decoding, chunked prefill, prefix caching, disaggregated prefill/decode</b> (vLLM still labels the last <em>experimental</em>) — typically move TTFT and effective concurrency more than a faster quant.</p>
+    <div class="callout"><span class="lab">Bottom line</span>Our numbers are a <b>floor</b>: one engine, prefix cache off, no speculative decoding. On the right engine with prefix caching on, a multi-turn chatbot's TTFT under load is substantially better than our E3 worst case — by how much on this rig is unmeasured.</div>
+  </section>
+
+  <div class="col foot">Raw data: <code>results/engines/eng-20260721T002012Z/</code> (incl. the vLLM crash note). Literature cited inline.<br><a href="https://github.com/ehzawad/qwen3-lora-gguf-bench">github.com/ehzawad/qwen3-lora-gguf-bench</a></div>
+</main>

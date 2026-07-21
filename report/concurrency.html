@@ -1,0 +1,107 @@
+<title>Concurrency Capacity on One A5000 — Deep Dive</title>
+<style>
+  :root{--ground:#f5f7fa;--panel:#fff;--ink:#171b24;--muted:#5a6474;--faint:#8b95a6;--line:#dde3ec;--line2:#c4cdda;--gpu:#17998a;--gpu-soft:#d3ece8;--cpu:#c67e12;--cpu-soft:#f6e6c9;--bad:#c8443a;--shadow:0 1px 2px rgba(20,30,50,.06),0 8px 30px rgba(20,30,50,.06);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--serif:Georgia,"Iowan Old Style",serif}
+  @media(prefers-color-scheme:dark){:root{--ground:#0b0e14;--panel:#12161f;--ink:#e6e9f0;--muted:#9aa4b6;--faint:#6b7688;--line:#232a37;--line2:#313a4b;--gpu:#2fc7b3;--gpu-soft:#123330;--cpu:#e8a83e;--cpu-soft:#33270f;--bad:#e5675c;--shadow:0 1px 2px rgba(0,0,0,.4),0 10px 34px rgba(0,0,0,.35)}}
+  :root[data-theme="light"]{--ground:#f5f7fa;--panel:#fff;--ink:#171b24;--muted:#5a6474;--faint:#8b95a6;--line:#dde3ec;--line2:#c4cdda;--gpu:#17998a;--gpu-soft:#d3ece8;--cpu:#c67e12;--cpu-soft:#f6e6c9;--bad:#c8443a}
+  :root[data-theme="dark"]{--ground:#0b0e14;--panel:#12161f;--ink:#e6e9f0;--muted:#9aa4b6;--faint:#6b7688;--line:#232a37;--line2:#313a4b;--gpu:#2fc7b3;--gpu-soft:#123330;--cpu:#e8a83e;--cpu-soft:#33270f;--bad:#e5675c}
+  *{box-sizing:border-box}body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--serif);font-size:18px;line-height:1.62;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}.col{max-width:68ch}
+  a{color:var(--gpu)}h1,h2,h3{font-family:var(--sans);line-height:1.15;text-wrap:balance;letter-spacing:-.015em}
+  code,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .eyebrow{font-family:var(--sans);text-transform:uppercase;letter-spacing:.14em;font-size:12px;font-weight:650;color:var(--faint)}
+  .nav{font-family:var(--sans);font-size:13px;display:flex;gap:14px;flex-wrap:wrap;padding:16px 0;border-bottom:1px solid var(--line)}
+  .nav a{color:var(--muted);text-decoration:none}.nav a.on{color:var(--gpu);font-weight:650}
+  header.hero{border-bottom:1px solid var(--line);background:radial-gradient(120% 140% at 100% -20%,var(--gpu-soft) 0,transparent 55%),radial-gradient(120% 140% at 0 -10%,var(--cpu-soft) 0,transparent 50%)}
+  .hero-in{padding:48px 0 34px}h1{font-size:clamp(28px,4.6vw,44px);font-weight:780;margin:12px 0 8px}
+  .lede{font-size:19px;color:var(--muted);max-width:62ch;margin:0}
+  .statstrip{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 15px;box-shadow:var(--shadow);min-width:120px}
+  .stat b{font-family:var(--mono);font-size:22px;font-weight:680;display:block}.stat.gpu b{color:var(--gpu)}.stat.cpu b{color:var(--cpu)}
+  .stat span{font-family:var(--sans);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+  section{padding:38px 0;border-bottom:1px solid var(--line)}h2{font-size:clamp(22px,3vw,28px);font-weight:720;margin:0 0 14px}
+  h3{font-family:var(--sans);font-size:17px;margin:22px 0 6px}.col p{margin:13px 0}
+  .chart{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 18px 10px;box-shadow:var(--shadow);margin:22px 0}
+  .chart h4{font-family:var(--sans);font-size:15px;margin:0 0 2px}.chart .sub{font-family:var(--sans);font-size:13px;color:var(--muted);margin:0 0 8px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--sans);font-size:12.5px;color:var(--muted);margin-top:6px}.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;margin-right:6px}
+  svg{display:block;width:100%;height:auto;overflow:visible}.grid{stroke:var(--line)}.axlab{font-family:var(--sans);font-size:11px;fill:var(--faint)}.dotlab{font-family:var(--mono);font-size:11px;fill:var(--ink)}
+  .tbl{overflow-x:auto;margin:20px 0;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:var(--shadow)}
+  table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+  caption{text-align:left;font-family:var(--sans);font-size:13px;color:var(--muted);padding:12px 16px 0}
+  th,td{padding:7px 13px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}
+  thead th{font-family:var(--sans);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:650}
+  tbody tr:last-child td{border-bottom:none}tr.peak td{background:var(--gpu-soft);font-weight:680}tr.dim td{color:var(--muted)}
+  .callout{border-left:3px solid var(--gpu);background:var(--panel);border-radius:0 12px 12px 0;padding:14px 18px;margin:20px 0;font-size:16.5px;box-shadow:var(--shadow)}
+  .callout .lab{font-family:var(--sans);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);display:block;margin-bottom:4px}
+  ul.clean{padding-left:1.1em}ul.clean li{margin:8px 0}.foot{padding:34px 0 64px;color:var(--muted);font-size:15px}.foot a{font-family:var(--mono);font-size:14px}
+</style>
+
+<header class="hero"><div class="wrap">
+  <div class="nav">
+    <a href="index.html">◂ Field guide</a><a href="concurrency.html" class="on">Concurrency</a><a href="precision.html">Precision</a><a href="engines.html">Engines &amp; chatbot</a><a href="lora.html">LoRA &amp; SVD</a>
+  </div>
+  <div class="hero-in">
+    <div class="eyebrow">Study E1 · 12-point sweep · RTX A5000 · Qwen3-4B Q6_K · llama.cpp</div>
+    <h1>Concurrency capacity — where it peaks, and what breaks first</h1>
+    <p class="lede">Raise concurrent streams from 1 to 128 on one 24 GB GPU. Throughput doesn't rise forever — it peaks near C=64 and <em>declines</em>, because the limiter leaves the GPU.</p>
+    <div class="statstrip">
+      <div class="stat gpu"><b>802</b><span>peak tok/s · C=64</span></div>
+      <div class="stat"><b>−6.6%</b><span>C=64 → 128 (declines)</span></div>
+      <div class="stat gpu"><b>108.07</b><span>MiB/slot · R²=1.0</span></div>
+      <div class="stat cpu"><b>2.5→29%</b><span>server CPU</span></div>
+      <div class="stat"><b>20×</b><span>per-user slowdown</span></div>
+    </div>
+  </div>
+</div></header>
+
+<main class="wrap">
+  <section><div class="col">
+    <p><b>Method.</b> llama.cpp, closed-loop <em>barrier-synchronous</em> load, <code>ignore_eos</code>, ~242-token prompts / exactly 256 generated, <code>--parallel == C</code>, 768-token slots, f16 KV, <code>--no-kv-unified</code>. A <b>saturation-capacity probe</b> — not a real arrival-pattern test. Per-worker sample counts scale down with C (60 at C=1 → 10 at C≥16); a C=32 repeat and an independent Work-A run cross-check the curve.</p>
+  </div>
+    <div class="chart"><h4>Throughput peaks at C=64, then declines</h4><p class="sub">The biggest batching win is C8→C16 (+262 tok/s); marginal gain goes negative past 64.</p><div id="c1"></div></div>
+    <div class="chart"><h4>The crossover — GPU falls, host CPU rises</h4><p class="sub">GPU util median 94%→41% (p95 pins 99% = bursty), power 229→168 W, while server-process CPU climbs ~11×.</p><div id="c2"></div><div class="legend"><span><i style="background:var(--gpu)"></i>GPU util median %</span><span><i style="background:var(--cpu)"></i>server CPU %</span></div></div>
+    <div class="chart"><h4>VRAM is linear in configured slots (108.07 MiB/slot)</h4><p class="sub">KV is preallocated per slot at startup — flat under load, not per live request.</p><div id="c3"></div></div>
+  </section>
+
+  <section>
+    <h2>The master table</h2>
+    <div class="tbl"><table>
+      <caption>E1 sweep, 12 points + Work-A cross-check. Fair-share = aggregate ÷ C.</caption>
+      <thead><tr><th>C</th><th>tok/s</th><th>tok/min</th><th>speedup</th><th>fair-share</th><th>lat p50 s</th><th>TTFT p95 s</th><th>GPU util m/p95</th><th>power W</th><th>srv CPU%</th><th>VRAM MiB</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>118.4</td><td>7,105</td><td>1.0×</td><td>118.4</td><td>2.18</td><td>0.08</td><td>94/95</td><td>229</td><td>2.55</td><td>3,584</td></tr>
+        <tr><td>2</td><td>205.5</td><td>12,332</td><td>1.7×</td><td>102.8</td><td>2.49</td><td>0.14</td><td>91/92</td><td>229</td><td>2.60</td><td>3,692</td></tr>
+        <tr><td>4</td><td>293.5</td><td>17,613</td><td>2.5×</td><td>73.4</td><td>3.48</td><td>0.25</td><td>86/87</td><td>227</td><td>2.67</td><td>3,908</td></tr>
+        <tr><td>8</td><td>375.4</td><td>22,525</td><td>3.2×</td><td>46.9</td><td>5.45</td><td>0.48</td><td>80/94</td><td>228</td><td>2.80</td><td>4,340</td></tr>
+        <tr><td>16</td><td>637.6</td><td>38,258</td><td>5.4×</td><td>39.9</td><td>6.42</td><td>0.90</td><td>61/99</td><td>223</td><td>3.87</td><td>5,204</td></tr>
+        <tr><td>24</td><td>704.2</td><td>42,254</td><td>5.9×</td><td>29.3</td><td>8.68</td><td>1.10</td><td>54/99</td><td>203</td><td>5.27</td><td>6,072</td></tr>
+        <tr><td>32</td><td>748.5</td><td>44,911</td><td>6.3×</td><td>23.4</td><td>10.94</td><td>1.35</td><td>50/92</td><td>193</td><td>7.22</td><td>6,932</td></tr>
+        <tr><td>48</td><td>789.0</td><td>47,338</td><td>6.7×</td><td>16.4</td><td>15.54</td><td>1.57</td><td>44/99</td><td>178</td><td>10.44</td><td>8,664</td></tr>
+        <tr class="peak"><td>64</td><td>801.8</td><td>48,108</td><td>6.8×</td><td>12.5</td><td>20.41</td><td>2.20</td><td>46/99</td><td>174</td><td>13.82</td><td>10,388</td></tr>
+        <tr class="dim"><td>96</td><td>772.7</td><td>46,360</td><td>6.5×</td><td>8.0</td><td>31.79</td><td>3.19</td><td>38/99</td><td>141</td><td>21.26</td><td>13,854</td></tr>
+        <tr class="dim"><td>128</td><td>749.3</td><td>44,958</td><td>6.3×</td><td>5.9</td><td>43.64</td><td>4.05</td><td>41/99</td><td>168</td><td>29.13</td><td>17,308</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout"><span class="lab">What breaks first</span>Not VRAM (14.6 GB of 24 at C=100), not thermal (≤78 °C). As C rises the GPU is <b>underfed</b> (util/power fall, p95 pins 99% = bursty gaps) while server-process CPU rises ~11×. The evidence <b>most strongly points to a host-side feed/orchestration bottleneck</b> (CPU-scheduling the leading candidate) — but no profiler was run, so the exact mechanism isn't isolated. <b>Practical rule (this rig):</b> operate C≈24–32 for balance, ≤4 for latency, ~48–64 for max throughput; don't exceed ~64.</div>
+  </section>
+
+  <div class="col foot">
+    Part of a field-guide suite. Raw data: <code>results/sweep-20260720T191546Z/</code>. <br>
+    <a href="https://github.com/ehzawad/qwen3-lora-gguf-bench">github.com/ehzawad/qwen3-lora-gguf-bench</a>
+  </div>
+</main>
+
+<script>
+(function(){const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();const NS="http://www.w3.org/2000/svg";
+function el(n,a){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);return e}
+const C=[1,2,4,8,16,24,32,48,64,96,128],tps=[118.4,205.5,293.5,375.4,637.6,704.2,748.5,789,801.8,772.7,749.3],gpu=[94,91,86,80,61,54,50,44,46,38,41],cpu=[2.55,2.6,2.67,2.8,3.87,5.27,7.22,10.44,13.82,21.26,29.13],vram=[3584,3692,3908,4340,5204,6072,6932,8664,10388,13854,17308];
+const W=900,H=320,m={t:16,r:16,b:38,l:50},iw=W-m.l-m.r,ih=H-m.t-m.b,lx=c=>m.l+Math.log2(c)/Math.log2(128)*iw;
+function frame(id){const s=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img"});document.getElementById(id).appendChild(s);return s}
+function yax(s,mn,mx,f){for(let i=0;i<=4;i++){const v=mn+(mx-mn)*i/4,y=m.t+ih-ih*i/4;s.appendChild(el("line",{x1:m.l,y1:y,x2:m.l+iw,y2:y,class:"grid"}));s.appendChild(el("text",{x:m.l-8,y:y+4,class:"axlab","text-anchor":"end"})).textContent=f(v)}}
+function xt(s){C.forEach(c=>{s.appendChild(el("text",{x:lx(c),y:m.t+ih+20,class:"axlab","text-anchor":"middle"})).textContent=c})}
+function path(v,mn,mx){return v.map((d,i)=>{const x=lx(C[i]),y=m.t+ih-(d-mn)/(mx-mn)*ih;return(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)}).join(" ")}
+function P(v,i,mn,mx){return[lx(C[i]),m.t+ih-(v[i]-mn)/(mx-mn)*ih]}
+(function(){const s=frame("c1");yax(s,0,900,v=>Math.round(v));xt(s);s.appendChild(el("path",{d:path(tps,0,900),fill:"none",stroke:css("--gpu"),"stroke-width":2.5,"stroke-linejoin":"round"}));tps.forEach((v,i)=>{const[x,y]=P(tps,i,0,900),pk=C[i]===64;s.appendChild(el("circle",{cx:x,cy:y,r:pk?6:3.3,fill:pk?css("--gpu"):css("--panel"),stroke:css("--gpu"),"stroke-width":2}));if(pk)s.appendChild(el("text",{x,y:y-13,class:"dotlab","text-anchor":"middle","font-weight":"700"})).textContent="802 @ C=64"});[96,128].forEach(c=>{const i=C.indexOf(c),[x,y]=P(tps,i,0,900);s.appendChild(el("text",{x,y:y-11,class:"dotlab","text-anchor":"middle",fill:css("--cpu")})).textContent="↓"+Math.round(tps[i])})})();
+(function(){const s=frame("c2");yax(s,0,100,v=>Math.round(v));xt(s);s.appendChild(el("path",{d:path(gpu,0,100),fill:"none",stroke:css("--gpu"),"stroke-width":2.5}));s.appendChild(el("path",{d:path(cpu,0,100),fill:"none",stroke:css("--cpu"),"stroke-width":2.5}));gpu.forEach((v,i)=>{const[x,y]=P(gpu,i,0,100);s.appendChild(el("circle",{cx:x,cy:y,r:2.8,fill:css("--gpu")}))});cpu.forEach((v,i)=>{const[x,y]=P(cpu,i,0,100);s.appendChild(el("circle",{cx:x,cy:y,r:2.8,fill:css("--cpu")})})})();
+(function(){const s=frame("c3");yax(s,0,18000,v=>(v/1000).toFixed(0)+"k");xt(s);const fit=C.map(c=>108.07*c+3475.6);s.appendChild(el("path",{d:path(fit,0,18000),fill:"none",stroke:css("--faint"),"stroke-width":1.3,"stroke-dasharray":"5 4"}));vram.forEach((v,i)=>{const[x,y]=P(vram,i,0,18000);s.appendChild(el("circle",{cx:x,cy:y,r:3.4,fill:css("--gpu")})})})();
+})();
+</script>

@@ -1,0 +1,66 @@
+<title>LoRA → GGUF, and "Is a LoRA Just a Matmul?" (SVD probe)</title>
+<style>
+  :root{--ground:#f5f7fa;--panel:#fff;--ink:#171b24;--muted:#5a6474;--faint:#8b95a6;--line:#dde3ec;--gpu:#17998a;--gpu-soft:#d3ece8;--cpu:#c67e12;--cpu-soft:#f6e6c9;--bad:#c8443a;--shadow:0 1px 2px rgba(20,30,50,.06),0 8px 30px rgba(20,30,50,.06);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--serif:Georgia,"Iowan Old Style",serif}
+  @media(prefers-color-scheme:dark){:root{--ground:#0b0e14;--panel:#12161f;--ink:#e6e9f0;--muted:#9aa4b6;--faint:#6b7688;--line:#232a37;--gpu:#2fc7b3;--gpu-soft:#123330;--cpu:#e8a83e;--cpu-soft:#33270f;--bad:#e5675c;--shadow:0 1px 2px rgba(0,0,0,.4),0 10px 34px rgba(0,0,0,.35)}}
+  :root[data-theme="light"]{--ground:#f5f7fa;--panel:#fff;--ink:#171b24;--muted:#5a6474;--faint:#8b95a6;--line:#dde3ec;--gpu:#17998a;--gpu-soft:#d3ece8;--cpu:#c67e12;--cpu-soft:#f6e6c9;--bad:#c8443a}
+  :root[data-theme="dark"]{--ground:#0b0e14;--panel:#12161f;--ink:#e6e9f0;--muted:#9aa4b6;--faint:#6b7688;--line:#232a37;--gpu:#2fc7b3;--gpu-soft:#123330;--cpu:#e8a83e;--cpu-soft:#33270f;--bad:#e5675c}
+  *{box-sizing:border-box}body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--serif);font-size:18px;line-height:1.62;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}.col{max-width:68ch}a{color:var(--gpu)}
+  h1,h2,h3{font-family:var(--sans);line-height:1.15;text-wrap:balance;letter-spacing:-.015em}code,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .eyebrow{font-family:var(--sans);text-transform:uppercase;letter-spacing:.14em;font-size:12px;font-weight:650;color:var(--faint)}
+  .nav{font-family:var(--sans);font-size:13px;display:flex;gap:14px;flex-wrap:wrap;padding:16px 0;border-bottom:1px solid var(--line)}.nav a{color:var(--muted);text-decoration:none}.nav a.on{color:var(--gpu);font-weight:650}
+  header.hero{border-bottom:1px solid var(--line);background:radial-gradient(120% 140% at 100% -20%,var(--gpu-soft) 0,transparent 55%),radial-gradient(120% 140% at 0 -10%,var(--cpu-soft) 0,transparent 50%)}
+  .hero-in{padding:48px 0 34px}h1{font-size:clamp(27px,4.4vw,42px);font-weight:780;margin:12px 0 8px}.lede{font-size:19px;color:var(--muted);max-width:64ch;margin:0}
+  section{padding:38px 0;border-bottom:1px solid var(--line)}h2{font-size:clamp(22px,3vw,28px);font-weight:720;margin:0 0 14px}h3{font-family:var(--sans);font-size:17px;margin:24px 0 6px}.col p{margin:13px 0}
+  .tbl{overflow-x:auto;margin:20px 0;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:var(--shadow)}table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+  caption{text-align:left;font-family:var(--sans);font-size:13px;color:var(--muted);padding:12px 16px 0}th,td{padding:7px 13px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}
+  thead th{font-family:var(--sans);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:650}tbody tr:last-child td{border-bottom:none}tr.peak td{background:var(--gpu-soft);font-weight:680}
+  .callout{border-left:3px solid var(--gpu);background:var(--panel);border-radius:0 12px 12px 0;padding:14px 18px;margin:20px 0;font-size:16.5px;box-shadow:var(--shadow)}.callout .lab{font-family:var(--sans);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);display:block;margin-bottom:4px}
+  ul.clean{padding-left:1.1em}ul.clean li{margin:9px 0}.foot{padding:34px 0 64px;color:var(--muted);font-size:15px}.foot a{font-family:var(--mono);font-size:14px}
+  .eq{font-family:var(--mono);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:2px 8px}
+</style>
+
+<header class="hero"><div class="wrap">
+  <div class="nav"><a href="index.html">◂ Field guide</a><a href="concurrency.html">Concurrency</a><a href="precision.html">Precision</a><a href="engines.html">Engines &amp; chatbot</a><a href="lora.html" class="on">LoRA &amp; SVD</a><a href="locust.html">Locust</a></div>
+  <div class="hero-in">
+    <div class="eyebrow">Work A (merge → Q6_K) + Work B (SVD extraction probe)</div>
+    <h1>LoRA → GGUF, and "is a LoRA just a matmul?"</h1>
+    <p class="lede">Yes, mechanically — a merged LoRA is <span class="eq">W + (α/r)·B·A</span>. But "so I can SVD any two checkpoints back into the LoRA that made them" is false in general. Here's the receipt.</p>
+  </div>
+</div></header>
+
+<main class="wrap">
+  <section>
+    <h2>The pipeline is provenance-clean and verified</h2>
+    <p class="col">Base <code>Qwen3-4B-Instruct-2507</code> + a legal-ops LoRA (r=16, α=32) merged, converted to bf16 GGUF, quantized to <b>Q6_K (3.3 GB, 6.56 bpw)</b>. Verified: merged <code>q_proj</code> is <b>bit-exact</b> <span class="eq">base + (α/r)·BA</span> (all 252 target tensors), tied embeddings preserved, no <code>lm_head</code> synthesized, chat-template SHA-256 match, GGUF file-type <code>MOSTLY_Q6_K</code>. Downstream: 0 failures across thousands of requests, server token counter matched the client exactly.</p>
+  </section>
+
+  <section>
+    <h2>The SVD probe — control vs a real checkpoint delta</h2>
+    <p class="col">For each of 252 target-linear matrices, compute <span class="eq">ΔW = W_ft − W_base</span> and its singular values. A <b>control</b> (a delta we <em>know</em> is a rank-16 LoRA) vs a <b>treatment</b> (the delta between two published checkpoints).</p>
+    <div class="tbl"><table>
+      <caption>SVD of the weight delta, 252 matrices.</caption>
+      <thead><tr><th>Metric</th><th>Control: known r=16 LoRA</th><th>Instruct−Base (inter-checkpoint)</th></tr></thead>
+      <tbody>
+        <tr><td>mean energy-entropy eff. rank (/2560)</td><td>42.8</td><td>1,507</td></tr>
+        <tr><td>‖ΔW‖ / ‖W‖</td><td>~0.2%</td><td>~17%</td></tr>
+        <tr class="peak"><td>rank-16 SVD retained energy</td><td>74.2%</td><td>3.55%</td></tr>
+        <tr><td>embed_tokens delta</td><td>0.0</td><td>~20.4%</td></tr>
+        <tr><td>rank-16 retained: attn / mlp</td><td>74 / 74%</td><td>5.4 / 2.8%</td></tr>
+      </tbody>
+    </table></div>
+    <ul class="col clean">
+      <li><b>The control behaves low-rank</b> — eff-rank ~43, embeddings/norms delta exactly 0. (It isn't a clean "16" only because it's read back through bf16-merged weights, so bf16 rounding smears energy across the spectrum — a known calibration artifact.)</li>
+      <li><b>The real delta is high-rank</b> — rank-16 keeps only <b>3.55%</b> of the energy; even rank-512 keeps under half. It shifts <b>embeddings ~20%</b> (a target-linear LoRA can't represent that at all), and <b>MLP is harder than attention</b>.</li>
+    </ul>
+    <div class="callout"><span class="lab">Read this framing, don't skip it</span>
+      <ul class="clean" style="margin:4px 0">
+        <li>It's an <b>inter-checkpoint delta, not a proven full fine-tune</b> — Instruct-2507 declares no base model.</li>
+        <li>Any rank-r SVD is <b>"LoRA-representable," never "a working extracted LoRA"</b> — no task behavior was trained or validated.</li>
+        <li>The high-rank result <b>does not refute "LoRA can match full fine-tuning"</b> (cf. Thinking Machines, <a href="https://thinkingmachines.ai/blog/lora/"><em>LoRA Without Regret</em></a>): a <em>trained</em> low-rank adapter stores task information, not the full weight delta — orthogonal to this measurement.</li>
+      </ul>
+      <b>Takeaway:</b> "merged LoRA = base + low-rank matmul" is true; "so I can SVD any diff back into a LoRA" is false in general — the real between-checkpoint delta is high-rank, embedding-shifting, and MLP-heavy.</div>
+  </section>
+
+  <div class="col foot">Raw data: <code>results/extraction/</code> · merged model &amp; GGUFs are git-ignored (regenerated by <code>./run.sh reproduce</code>).<br><a href="https://github.com/ehzawad/qwen3-lora-gguf-bench">github.com/ehzawad/qwen3-lora-gguf-bench</a></div>
+</main>
