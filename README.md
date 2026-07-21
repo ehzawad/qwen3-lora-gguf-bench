@@ -11,6 +11,19 @@ reporting output **tokens/minute**, TTFT, latency, and GPU/CPU/VRAM telemetry.
 > and host load. They are **not** intrinsic model or llama.cpp numbers and will
 > not transfer unchanged to other GPUs, drivers, contexts, or schedules.
 
+## 📖 The report
+
+The full write-up — a mentor-style **field guide to LLM inference** covering all
+six studies (concurrency capacity, precision, engines, LoRA/SVD, and finite-user
+load), reconciled through three independent review passes — lives in:
+
+- **[`REPORT.md`](REPORT.md)** — the complete report (renders on GitHub).
+- **[`report/`](report/)** — a self-contained, theme-aware **HTML suite** with
+  interactive charts: [field guide](report/index.html) ·
+  [concurrency](report/concurrency.html) · [precision](report/precision.html) ·
+  [engines &amp; chatbot](report/engines.html) · [LoRA &amp; SVD](report/lora.html) ·
+  [Locust](report/locust.html). (Open locally or via GitHub Pages.)
+
 ## Scope and non-goals
 
 - **In scope:** an end-to-end, pinned, verifiable path from `base + adapter` to a
