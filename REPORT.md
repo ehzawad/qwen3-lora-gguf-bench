@@ -18,7 +18,7 @@ Everything in this guide runs on **one machine, one GPU**:
 
 The through-line of this whole guide: **a 4B model at Q6_K is tiny relative to 24 GB.** The interesting questions are therefore *not* "does it fit?" (it does, ~3.3 GB of weights) but "how many users can I serve, how fast, and *what runs out first*?" The answer to the last one turns out to be surprising — and it is not VRAM, and it is not even the GPU's compute.
 
-A note on honesty before we start: two of the four studies contain a **planned comparison that did not happen** (the vLLM engine crashed) and **a probe that measures something subtler than its nickname suggests** (the "extract a LoRA with SVD" study). I flag both loudly and repeatedly, because a field guide that lets you quote a number you shouldn't quote has failed you.
+A note on honesty before we start: one study is **a probe that measures something subtler than its nickname suggests** (the "extract a LoRA with SVD" study, §2), which I flag loudly and repeatedly. And the engine comparison (§5) was **VOID on the first attempt** (vLLM crashed at import) — it has since been **fixed and re-run** on a stable pinned stack, but I keep the failure in the record rather than hiding it, because a field guide that lets you quote a number you shouldn't quote has failed you. Later sections extend the work to the **context window & accuracy** (§9), **model choice at 4-bit** (§10, adding Qwen3.5-9B and Gemma-4-E2B), and a real **llama.cpp vs vLLM vs SGLang** comparison (§5).
 
 ---
 
@@ -218,31 +218,35 @@ Prefill uplift: Q4 +15.6%, Q5 +18.9%, Q6 +16.7%, Q8 +21.0%, BF16 +16.7%. Decode 
 
 ---
 
-## 5. Engine Choice — llama.cpp vs vLLM (and why this comparison is VOID)
+## 5. Engine Choice — llama.cpp vs vLLM vs SGLang (measured, iso-precision)
 
-**This is where you must be most careful, because the tempting headline is unearned.**
+**The original E5 attempt was VOID** — vLLM 0.25.1 (torch 2.11 / triton 3.6 nightly) died at import with a Triton JIT parse bug (`AttributeError: 'NoneType' … in triton/runtime/jit.py`, triggered by an unrelated `minimax_m3` kernel), so it served **0 requests** and no comparison could be stated. That is now **resolved** by pinning a stable, tested stack — **vLLM 0.11.0 / torch 2.8.0+cu128 / triton 3.4.0 / transformers 4.57.1** — under which vLLM loads and serves correctly. The comparison below is the **real, fair one**.
 
-The intent (study "E5") was a head-to-head at C = 1 / 30 / 100 on a **fixed 100-slot llama.cpp server** vs vLLM, to test the common hypothesis *"vLLM wins big at high concurrency (PagedAttention + continuous batching)."*
+**The fair setup (this is what makes it quotable).** All three engines serve the **same merged Qwen3-4B at bf16** (llama.cpp reads the bf16 GGUF; vLLM/SGLang read the bf16 safetensors) — so **precision is matched**, removing the apples-to-oranges objection. Identical closed-loop harness, identical payload (~240-token chat prompt / **exactly 256 generated** via `ignore_eos`, temp 0, fixed seed), **prefix caching disabled on all three** (raw continuous-batching throughput, not caching), **fixed-server / vary-client** (each engine booted once at up to 100 concurrent seqs; client concurrency swept 1→64), same A5000, same llama.cpp build `91d2fc3`. **0 failures across every point.**
 
-**The llama.cpp side ran cleanly:**
+| C | llama.cpp bf16 | SGLang bf16 | vLLM bf16 |
+|---|---|---|---|
+| 1 | **61.3** tok/s | 34.7 | 67.9 |
+| 8 | 382.2 | 258.1 | **478.7** |
+| 16 | 381.5 | 499.7 | **853.3** |
+| 32 | 268.1 | 900.7 | **1297.0** |
+| 64 | 421.2 | 1647.3 | **1762.7** |
+| **TTFT p50 @ C=64** | 0.98 s | 1.06 s | **0.60 s** |
+| **TTFT p99 @ C=64** | 3.78 s | 1.85 s | **2.23 s** |
 
-| Engine | C | Throughput (tok/s) | TTFT p50 / p99 (s) | Latency p50 / p99 (s) | Reqs (ok/fail) | GPU util med/p95 | VRAM |
-|---|---|---|---|---|---|---|---|
-| llama.cpp Q6_K | 1 | 118.11 | 0.074 / 0.080 | 2.17 / 2.20 | 20/0 | 93% / 94% | 14,290 MiB |
-| llama.cpp Q6_K | 30 | 370.45 | 0.904 / 1.70 | 22.1 / 32.2 | 600/0 | 76% / 95% | 14,300 MiB |
-| llama.cpp Q6_K | 100 | 753.12 | 0.646 / 5.29 | 33.6 / 39.5 | 2000/0 | 41% / 99% | 14,300 MiB |
-| **vLLM bf16** | 1/30/100 | **CRASHED — 0 requests served** | — | — | 0/all | — | — |
+**The finding is unambiguous and matches the theory:**
 
-**The vLLM side never served a single request.** vLLM 0.25.1 loaded the merged Qwen3-4B (bf16, 7.64 GiB), sized its KV cache to **13.25 GiB = 96,448 tokens (47.09× max concurrency)** — and then **`EngineCore` died at `kernel_warmup`** with a Triton JIT parse bug (`AttributeError: 'NoneType' object has no attribute 'start'` in `triton/runtime/jit.py`) triggered by importing an *unrelated* `minimax_m3` sparse-attention Triton kernel. No `benchmark-vllm-*.json` exists; the server never listened.
+1. **At C=1 (single stream) they essentially tie** — llama.cpp 61 ≈ vLLM 68 > SGLang 35. llama.cpp is fully competitive for one user, and SGLang's scheduler carries per-request overhead that only pays off under load.
+2. **As concurrency rises, vLLM and SGLang pull away hard.** By **C=64, vLLM (1763) and SGLang (1647) are ~4× llama.cpp (421)** — and vLLM/SGLang are still climbing near-linearly while **llama.cpp plateaus and goes noisy/host-bound** (382→381→268→421), the same wall Section 3 diagnosed. PagedAttention (vLLM) and RadixAttention (SGLang) + purpose-built continuous batching are simply better at packing many concurrent decodes.
+3. **vLLM has the best latency under load** (TTFT p50 0.60 s at C=64 vs llama.cpp 0.98 / p99 3.78), with SGLang close behind.
 
-> **Mandatory framing — do not violate this:**
-> - **The engine comparison is VOID / one-sided.** There is **no vLLM measurement**. Do **not** report any llama.cpp-vs-vLLM ratio, latency delta, or "vLLM wins/loses" claim. The hypothesis is **untested, not refuted, not confirmed.**
-> - **Even if vLLM had run, it would not have been iso-precision:** llama.cpp was Q6_K (6-bit, 3.07 GiB) while vLLM was configured bf16 (16-bit, 7.49 GiB). llama.cpp carries a ~2.4× smaller weight-read advantage for decode *plus* a small quality handicap — so a naïve tok/s comparison would have been apples-to-oranges anyway.
-> - Use the **complete run `eng-…T002012Z`** (3 benchmark JSONs + both server logs). The earlier `eng-…T001714Z` is **incomplete** (telemetry for c001/c030 only, no c100, no benchmark JSONs) — don't source headline numbers from it.
+**The honest tradeoffs (this is a "which for what," not a "winner"):**
 
-What the llama.cpp side *does* independently confirm (consistent with Section 3): throughput scales **sublinearly** (6.4× for 100× clients), tail latency and TTFT degrade sharply, and **median GPU util/power *drop* as C rises** (93/94% → 41/99% util; 229 W → 156 W) even as p95 util pins at 99% — the same bursty, host-bound behavior. VRAM is constant ~14.3 GiB (fixed 100-slot preallocation), 0 failures across 2,620 requests.
+- **llama.cpp** — best-in-class *setup simplicity* (one static binary, GGUF, runs on CPU/Metal/mixed, trivial to deploy), competitive at **low concurrency**, and the widest quant/hardware reach. It preallocates KV per slot (higher memory floor: this bf16/np=100 server sat at ~18 GiB) and hits a host-bound throughput wall well before the GPU saturates.
+- **vLLM** — the throughput/latency winner for **many concurrent users**, with paged (non-preallocated) KV that packs memory efficiently. Cost: a heavier, version-sensitive Python/CUDA stack (as the VOID episode showed) and slower to support brand-new architectures (§10).
+- **SGLang** — scales like vLLM at high concurrency (RadixAttention shines with shared prefixes, which we *disabled* here — so its real-world multi-turn edge is understated), but **slowest at C=1**. Similar deployment weight to vLLM.
 
-**Deployment-shape caveat:** this E5 server is **one fixed config** (`n_slots=100`, 768 tok/slot, Q6_K, ~14.3 GiB) reused for C=1/30/100. It is **not re-provisioned per C** like Section 3. So C=1 here runs with 99 idle slots (over-provisioned), and it's not directly comparable to the per-C-tuned sweep.
+**Caveats you must keep attached:** (a) this is **bf16 for all three** — *not* each engine's optimal config; llama.cpp's low-bit GGUF path and vLLM's AWQ/FP8 paths would each shift their own curves (a matched-4-bit engine follow-up is separate). (b) **Prefix caching is off** — turning it on helps all three and especially SGLang/vLLM for shared-prefix multi-turn (§9.3). (c) **Fixed-server, vary-client** (realistic serving) — not per-C re-provisioning, so C=1 runs with many idle slots. (d) One 4B model, one A5000, ~240-tok prompts / 256 gen. **No claim that any engine is "inherently" fastest** — results combine scheduler, KV design, kernels, and this workload.
 
 ---
 
@@ -399,7 +403,7 @@ typically move TTFT and effective concurrency more than picking a faster quant.
 | **Balanced (good tok/s, tolerable latency)** | **C≈24–32**; ~700–750 tok/s, p50 ~9–11 s. | Efficient region ends around here; marginal gains shrink fast past C=32. |
 | **Avoid wasting resources** | **Don't exceed C≈64** *(this rig/build/model/768-tok slots)*. | Past 64, aggregate throughput *declines* (−29, −23 tok/s) — you pay host-side overhead for nothing. |
 | **Fastest decode / most tok/s per byte** | Quantize weights **as low as quality allows** (Q4_K_M = 2.18× BF16 decode). | Decode is bandwidth-bound; smaller weights = faster. |
-| **Higher-precision candidates** | **Q6_K or Q8_0** (default Q6_K, 3.3 GB, 6.56 bpw) — **validate quality on your task.** | Prefill is compute-bound (flat), so higher-bit weights cost little on prefill; you pay only in decode. *(§9.4 measured wikitext PPL — Q6_K/Q8_0 practically indistinguishable from bf16 (≤0.014%, no paired CI) — but not legal-task quality; see §9.4 & §10.)* |
+| **Higher-precision candidates** | **Q6_K or Q8_0** (default Q6_K, 3.3 GB, 6.56 bpw) — **validate quality on your task.** | Prefill is compute-bound (flat), so higher-bit weights cost little on prefill; you pay only in decode. *(§9.4 measured wikitext PPL — Q6_K/Q8_0 practically indistinguishable from bf16 (≤0.014%, no paired CI) — but not legal-task quality; see §9.4 & §11.)* |
 | **Long context / many slots, VRAM-tight** | Use **q8_0 KV cache** (~½ footprint, ~4% speed cost). | Only worth it when KV memory is the real constraint; useless at short-ctx single-stream. |
 | **Any config** | **Flash-attention ON.** | +15–21% prefill, +4–9% decode, free. |
 | **Sizing VRAM** | Budget **~3.5 GiB base + 108 MiB × slots** (768-ctx). | Linear per-slot preallocation (R²=1.00000); VRAM is never your binding limit before throughput peaks. |
@@ -513,7 +517,62 @@ Read the caveats before you quote these. This is **general-domain next-token lik
 
 Every number above is one model: **`narcolepticchicken/qwen3-4b-legal-ops-contract-intake-lora`** (Qwen3-4B, LoRA **rank 16 / alpha 32**), **merged into the base weights** before GGUF export. So there is no adapter-swap or separate-adapter overhead in any measurement here — you are benchmarking a single merged checkpoint at five precisions, and the KV/context frontier is set by the 4B base geometry, not by the adapter.
 
-## 10. LIMITATIONS & CAVEATS (read this as carefully as the results)
+## 10. Model choice at 4-bit — Qwen3-4B vs Qwen3.5-9B vs Gemma-4-E2B
+
+Everything up to here served *one* model. This section flips the question: on the **same A5000**, at a **matched 4-bit tier**, how do a **bigger** model and a **smaller, efficiency-oriented** model compare on speed and memory? Three text-only GGUFs, benchmarked identically:
+
+| Model | Family | GGUF params (text tower) | HF total | Note |
+|---|---|---|---|---|
+| **Qwen3-4B** (ours) | Qwen3, dense | 4.02B | 4.0B | the merged legal model |
+| **Qwen3.5-9B** | Qwen3.5, **dense** | 8.95B | ~9.65B | multimodal (text path only); *not* MoE |
+| **Gemma-4-E2B** | Gemma 4, "E2B" | 4.65B | ~5.1B | multimodal; **~2B "effective"** (per-layer embeddings) |
+
+**Read the fairness rules before the numbers — they bound what these results mean:**
+
+- **Matched *nominal* Q4_K_M tier, NOT iso-precision.** All three were **self-quantized from bf16 with the identical `llama-quantize … Q4_K_M` command** (no imatrix) on the same llama.cpp build (`91d2fc3`). But identical commands do **not** yield identical bit-widths across architectures: measured **bits-per-weight are Qwen3-4B 4.97, Qwen3.5-9B 5.03, Gemma-4-E2B 5.90** — llama.cpp keeps far more of Gemma's tensors at F32/Q6_K (its per-layer-embedding machinery), so Gemma's "Q4_K_M" is effectively **denser (~5.9-bit)**. This matters: Gemma is the *fastest* below **despite** carrying the *heaviest* quant.
+- **Speed and memory footprint only — NOT quality.** Different tokenizers, different training, different purposes: a cross-model perplexity/quality ranking would be misleading, so we don't make one. Native tok/s is **not** "equal useful work" across tokenizers (post-template prompt lengths were comparable, ~232–251 tokens, but not identical).
+- **Text-only.** Both new models are multimodal; no projector is loaded and no media is used.
+- **No "inherently faster/leaner" claims.** Every number combines architecture *and* quant recipe *and* kernels *and* runtime.
+
+### 10.1 Single-stream speed (llama-bench, Q4_K_M)
+
+| Model | Prefill pp512 (tok/s) | Decode tg128 (tok/s) |
+|---|---|---|
+| **Gemma-4-E2B** | **7080** | **160.5** |
+| Qwen3-4B (ours) | 6085 | 146.7 |
+| Qwen3.5-9B | 2834 | 82.3 |
+
+Decode ranks **Gemma > 4B > Qwen3.5-9B** — *inverse* to total size, and Gemma leads even though its quant is the densest. The "E2B ≈ 2B effective" design shows up as real throughput (fewer params active per token). The dense 9.65B Qwen3.5 decodes at ~half the 4B's rate and prefills ~2× slower (more compute per token) — the price of the bigger model.
+
+### 10.2 Memory footprint is decoupled from parameter count
+
+KV-cache geometry (verified from each GGUF), and measured static VRAM with a 64-slot server:
+
+| Model | KV heads | head_dim | Layers | **f16 KV/token** | Weights (Q4_K_M) | **VRAM @ 64 slots ×1k ctx** |
+|---|---|---|---|---|---|---|
+| Gemma-4-E2B | 1 (MQA) | 512 | 35 | **70 KiB** | 3.43 GB | **3.2 GB** |
+| Qwen3.5-9B | 4 | 256 | 32 | **128 KiB** | 5.63 GB | **10.9 GB** |
+| Qwen3-4B | 8 | 128 | 36 | **144 KiB** | 2.50 GB | **12.2 GB** |
+
+The counterintuitive result: **the 9.65B model has a *smaller* whole-server footprint than our 4B** (10.9 vs 12.2 GiB at 64 slots), because its aggressive GQA (4 KV heads) + fewer layers give it **less KV/token** than the 4B's 8-head config — and KV, not weights, dominates at concurrency. **Gemma is leanest by far** (3.2 GB for the whole 64-slot server): extreme MQA (1 KV head) plus sliding-window attention keep KV allocation tiny. **Model size does not predict serving footprint — attention geometry does.**
+
+### 10.3 Concurrency throughput (Q4_K_M, fixed 64-slot server, prefix-cache off)
+
+Aggregate output tok/s (0 failures at every point; ~256-token generations):
+
+| C | Gemma-4-E2B | Qwen3-4B | Qwen3.5-9B |
+|---|---|---|---|
+| 1 | 161 | 127 | 72 |
+| 8 | 361 | 299 | 154 |
+| 16 | 537 | 533 | 259 |
+| 32 | 560 | 568 | 268 |
+| 64 | **650** | **639** | **302** |
+
+Gemma and the 4B track each other closely and are still climbing at C=64; Qwen3.5-9B runs at ~**45–50%** of their throughput throughout — a consistent, size-driven gap. So on one A5000 you can either serve the **fast small/efficient models at high concurrency**, or the **bigger 9.65B model at roughly half the aggregate rate** — a direct capability-for-throughput trade you now have numbers for.
+
+**Section caveats:** (a) the **bpw differences above** (Gemma 5.90 vs ~5.0) mean this is a *matched-tier*, not equal-precision, comparison. (b) **TTFT was only captured for the 4B** — a streaming-format quirk left Qwen3.5/Gemma TTFT unrecorded, so latency-under-load isn't compared here (throughput/VRAM are unaffected, being computed from token counts). (c) All single-stream and concurrency runs are the **same llama.cpp binary** — **vLLM/SGLang were *not* used for the new models**: vLLM 0.11.0 predates `qwen35`/`gemma4` support, and chasing a newer vLLM for two week-old architectures is a separate follow-up, not this study. (d) Text-only, one GPU, one quant tier.
+
+## 11. LIMITATIONS & CAVEATS (read this as carefully as the results)
 
 **A number without its caveat is a liability. These are the ones that will bite you if you forget them.**
 
@@ -529,7 +588,7 @@ Every number above is one model: **`narcolepticchicken/qwen3-4b-legal-ops-contra
 
 6. **VRAM figures are whole-board `memory.used`.** The ~3476 MiB intercept includes driver/other overhead; the 108.1 MiB/slot slope is specific to 768-tok f16 KV for this model. The "~195 slots fills the board" figure is a **linear extrapolation** — and throughput peaks (C=64) and declines *long before* VRAM binds, so it's academic.
 
-7. **The engine comparison is VOID.** vLLM served **0 requests** (Triton JIT crash at `kernel_warmup`, v0.25.1). Every E5 number is **llama.cpp-only**. No llama.cpp-vs-vLLM ratio, delta, or winner can be stated. And even had it run, **the precision was mismatched** (llama.cpp Q6_K 6-bit vs vLLM bf16 16-bit) — it would not have been iso-precision.
+7. **The engine comparison was fixed and re-run (§5) — but read its own caveats.** The original E5 was VOID (vLLM 0.25.1 crashed at import, 0 requests). It is now measured on a **stable pinned stack** (vLLM 0.11.0 / torch 2.8 / triton 3.4 / transformers 4.57) at **matched bf16** across llama.cpp, vLLM, and SGLang. Result: tie at C=1, vLLM/SGLang ~4× llama.cpp at C=64. Caveats that bound it: **bf16 is not each engine's optimal config** (no low-bit GGUF / AWQ / FP8 path was used), **prefix caching was disabled** (understates SGLang/vLLM), it's **one 4B model / one workload**, and **no engine is "inherently" fastest** — the numbers combine scheduler, KV design, and kernels. The new models (§10) were **not** run on vLLM/SGLang (0.11.0 predates their architectures).
 
 8. **E4 is statistically thin.** Each `llama-bench` point is **3 samples**, the first a cold outlier (prefill stddev up to ±790 ≈ 13%). The prefill numbers show **no monotonic bit-width ordering**, and n=3 is too thin for a robust ranking — hence "prefill is flat/compute-bound," not a fine ordering. `e4a_quant_fa.json` and `e4a_summary.md` are *separate* invocations differing a few percent (e.g. Q4 decode 167.99 vs 164.45) — treat as two runs.
 
@@ -591,11 +650,27 @@ points 0 failures; throughput computed on the 239). C=32/32b agree within ~0.6%.
 Locust CSV percentiles are bucketed to 100 ms/1000 ms — the JSON token-window
 values are the precise ones and were quoted preferentially.
 
+17. **§5 engine re-run and §10 model-scaling caveats.** The §5 engine comparison
+is **bf16 on all three engines** (matched precision, *not* each engine's optimal
+quant) with **prefix caching off** and a fixed-server/vary-client shape — different
+choices move the curves. The §10 model comparison is a **matched *nominal* Q4_K_M
+tier, NOT iso-precision**: identical `llama-quantize` produced **different bits-per-
+weight** (Qwen3-4B 4.97, Qwen3.5-9B 5.03, **Gemma-4-E2B 5.90** — llama.cpp keeps more
+Gemma tensors high-precision), so Gemma's speed lead comes *with* a denser quant, not
+a lighter one. §10 is **speed + footprint only, not quality** (different tokenizers →
+tok/s is not equal work; no cross-model perplexity was run), **text-only** (both new
+models are multimodal), and **TTFT was captured only for the 4B** (a streaming-format
+quirk left Qwen3.5/Gemma TTFT unrecorded; throughput/VRAM are unaffected). The new
+models ran on llama.cpp only — vLLM 0.11.0 predates `qwen35`/`gemma4`. Qwen3.5-9B is
+**dense** (an earlier "MoE" claim from a web summary was wrong — the GGUF has no expert
+tensors); reported sizes are the **text-tower GGUF** params (4.02B / 8.95B / 4.65B),
+with HF totals (~4B / ~9.65B / ~5.1B) including multimodal components not benchmarked.
+
 ---
 
 ### The one-paragraph summary you can repeat back
 
-On this single A5000, a 4B Q6_K model is bandwidth-bound on **decode** (lower-bit weights decode faster, up to 2.18× for Q4 vs BF16) and compute-bound on **prefill** (flat across quant). Serving many users, aggregate throughput climbs to a **broad plateau (C=32–64), peaks at ~802 tok/s at C=64, then declines** — because the bottleneck **leaves the GPU** (util median 94%→41%, power 229→168 W, 141 W at C=96) and the evidence **most strongly points to a host-side feed/orchestration bottleneck** (server-process CPU up ~11×; exact mechanism not isolated). VRAM is a non-issue (linear ~108 MiB/slot, board never fills before the peak). Per-user latency degrades ~20× the whole way up, so **"max throughput" and "good latency" are different operating points** — pick per SLO. But that whole story is the *short-chat* regime: the moment you open the **context window** and keep multi-turn sessions resident (§9), it **flips to VRAM-bound** — KV cache (f16 = 144 KiB/token; q8_0 = 53% of that) becomes the binding constraint, so "30 users" fits **only** as a q8_0-at-8k edge case (16k/32k and 100-anywhere don't fit), deep context taxes every decoded token (110→59 tok/s f16, d0→32k), and **prefix caching** is the non-optional multi-turn lever (cut TTFT ~6.8× in an indicative n=2 deep bucket, trends cross). At 30×8k the fit is real but slow — **fair-share 3.78 tok/s (agg/30), median per-request decode 5.7**, and 3/90 turns overflowed the window. On accuracy, a full-test wikitext perplexity sweep shows **Q6_K/Q8_0 practically indistinguishable from bf16** (≤0.014% point estimate; no paired significance test) and **Q4_K_M costs +2.42% PPL for 2.18× decode** — measured, but general-domain likelihood, not legal-task quality. The engine shootout **didn't happen** (vLLM crashed at warmup), and the "SVD-extract a LoRA" probe measures a **high-rank inter-checkpoint delta** that is at most *LoRA-representable* and refutes nothing about trained-LoRA quality. Never compare the closed-loop saturation numbers with the finite-user Locust numbers — they measure different worlds.
+On this single A5000, a 4B Q6_K model is bandwidth-bound on **decode** (lower-bit weights decode faster, up to 2.18× for Q4 vs BF16) and compute-bound on **prefill** (flat across quant). Serving many users, aggregate throughput climbs to a **broad plateau (C=32–64), peaks at ~802 tok/s at C=64, then declines** — because the bottleneck **leaves the GPU** (util median 94%→41%, power 229→168 W, 141 W at C=96) and the evidence **most strongly points to a host-side feed/orchestration bottleneck** (server-process CPU up ~11×; exact mechanism not isolated). VRAM is a non-issue (linear ~108 MiB/slot, board never fills before the peak). Per-user latency degrades ~20× the whole way up, so **"max throughput" and "good latency" are different operating points** — pick per SLO. But that whole story is the *short-chat* regime: the moment you open the **context window** and keep multi-turn sessions resident (§9), it **flips to VRAM-bound** — KV cache (f16 = 144 KiB/token; q8_0 = 53% of that) becomes the binding constraint, so "30 users" fits **only** as a q8_0-at-8k edge case (16k/32k and 100-anywhere don't fit), deep context taxes every decoded token (110→59 tok/s f16, d0→32k), and **prefix caching** is the non-optional multi-turn lever (cut TTFT ~6.8× in an indicative n=2 deep bucket, trends cross). At 30×8k the fit is real but slow — **fair-share 3.78 tok/s (agg/30), median per-request decode 5.7**, and 3/90 turns overflowed the window. On accuracy, a full-test wikitext perplexity sweep shows **Q6_K/Q8_0 practically indistinguishable from bf16** (≤0.014% point estimate; no paired significance test) and **Q4_K_M costs +2.42% PPL for 2.18× decode** — measured, but general-domain likelihood, not legal-task quality. The **engine shootout now has real numbers** (§5): matched bf16, **at C=1 llama.cpp ≈ vLLM; by C=64 vLLM/SGLang are ~4× llama.cpp** (their PagedAttention/RadixAttention scale where llama.cpp goes host-bound) — llama.cpp still wins on setup simplicity and low-concurrency/CPU reach. And a **model-scaling** study (§10) at a matched Q4_K_M tier shows the counterintuitive result that **serving footprint tracks attention geometry, not parameter count** (the dense 9.65B Qwen3.5 needs *less* VRAM at 64 slots than our 4B, and Gemma-4-E2B is fastest *and* leanest despite the densest quant). The "SVD-extract a LoRA" probe measures a **high-rank inter-checkpoint delta** that is at most *LoRA-representable* and refutes nothing about trained-LoRA quality. Never compare the closed-loop saturation numbers with the finite-user Locust numbers — they measure different worlds.
 ---
 
 ## Reproduction & provenance
@@ -616,6 +691,8 @@ them — the vLLM crash note and the E3 per-turn timing summary — is committed
 | E7 accuracy↔speed (full-test perplexity) | `results/accuracy-full-20260721T025541Z/` |
 | Multi-turn chatbot: 30×8k concurrent + single-user | `results/ctxchat-20260721T030352Z/` |
 | Multi-turn chatbot: prefix-cache A/B replay | `results/chatbot-20260721T024328Z/` |
+| §5 engine re-run (llama.cpp vs vLLM vs SGLang, bf16) | `results/enginefair-20260721T062947Z/` |
+| §10 model scaling (4B vs Qwen3.5-9B vs Gemma-4-E2B, Q4_K_M) | `results/modelscale-20260721T053813Z/` |
 
 Pipeline: `./run.sh reproduce` (download → merge → build llama.cpp → convert →
 quantize → verify → benchmark). Sweeps: `scripts/sweep_concurrency.sh` (E1),
@@ -623,8 +700,13 @@ quantize → verify → benchmark). Sweeps: `scripts/sweep_concurrency.sh` (E1),
 `scripts/locust_run.sh` (E2/E3), `scripts/svd_extract.py` (SVD),
 `scripts/context_sweep.sh` (E6), `scripts/perplexity.sh` (E7),
 `scripts/composite_sessions.py` + `scripts/mt_concurrent.py` +
-`scripts/multiturn_replay.py` (§9 chatbot). Data: `scripts/prepare_data.py`
-(wikitext-2 + UltraChat). Reference rig: 1× RTX A5000 24 GB, 2× Xeon Silver 4210R
-(40 threads), 125 GB RAM, PCIe Gen3 x16, driver CUDA 13.3, llama.cpp `91d2fc38`.
+`scripts/multiturn_replay.py` (§9 chatbot), `scripts/engine_fair.sh` +
+`scripts/bench_external.py` (§5 engines), `scripts/model_serve_bench.sh` (§10
+models). Data: `scripts/prepare_data.py` (wikitext-2 + UltraChat). Engine stack
+(§5): llama.cpp `91d2fc3`, **vLLM 0.11.0 / torch 2.8.0+cu128 / triton 3.4.0 /
+transformers 4.57.1**, **SGLang 0.5.15.post1**. §10 GGUFs are self-quantized from
+bf16 with identical `llama-quantize Q4_K_M` (SHA-256 + bpw audit in the run dir's
+`provenance.json`). Reference rig: 1× RTX A5000 24 GB, 2× Xeon Silver 4210R
+(40 threads), 125 GB RAM, PCIe Gen3 x16, driver CUDA 13.x, llama.cpp `91d2fc3`.
 Multiple adversarial review passes and multi-agent analysis workflows informed
 this report; remaining overclaims were corrected per their findings.

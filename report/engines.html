@@ -25,27 +25,31 @@
 <header class="hero"><div class="wrap">
   <div class="nav"><a href="index.html">◂ Field guide</a><a href="concurrency.html">Concurrency</a><a href="context.html">Context &amp; accuracy</a><a href="precision.html">Precision</a><a href="engines.html" class="on">Engines &amp; chatbot</a><a href="lora.html">LoRA &amp; SVD</a><a href="locust.html">Locust</a></div>
   <div class="hero-in">
-    <div class="eyebrow">Study E5 + literature review · what a real chatbot actually needs</div>
+    <div class="eyebrow">Study E5 (re-run) + literature · llama.cpp vs vLLM vs SGLang</div>
     <h1>Engines &amp; real-world chatbots</h1>
-    <p class="lede">Our vLLM benchmark crashed — so the engine shootout is <b>void</b>, not a winner. But the literature is clear on what matters for a production chatbot, and it reframes every number in this suite.</p>
+    <p class="lede">The engine shootout was <b>VOID on the first try</b> (vLLM crashed at import) — now <b>fixed and re-run</b> at matched bf16. The result: they tie at one user; by 64 concurrent, <b>vLLM and SGLang are ~4× llama.cpp</b>.</p>
   </div>
 </div></header>
 
 <main class="wrap">
   <section>
-    <h2>E5 — the engine comparison is <span style="color:var(--bad)">void</span></h2>
-    <div class="callout void"><span class="lab">Do not violate this</span><b>vLLM served 0 requests.</b> vLLM 0.25.1 loaded the model, then <code>EngineCore</code> died at <code>kernel_warmup</code> with a Triton JIT parse bug (persisted with <code>--enforce-eager</code>). <b>No llama.cpp-vs-vLLM winner, ratio, or latency delta can be stated</b> — the hypothesis is untested. Precision would also have been mismatched (llama.cpp Q6_K 6-bit vs vLLM bf16 16-bit).</div>
+    <h2>E5 — the fair, measured comparison</h2>
+    <div class="callout"><span class="lab">Why it's fair now</span>The original vLLM 0.25.1 (torch 2.11/triton 3.6 nightly) died at import (Triton JIT bug) and served <b>0 requests</b> — VOID. Pinning a stable stack (<b>vLLM 0.11.0 / torch 2.8 / triton 3.4 / transformers 4.57</b>) fixed it. All three engines now serve the <b>same merged Qwen3-4B at bf16</b> (matched precision), identical harness, <b>256-in/256-out</b>, <b>prefix-cache off</b>, fixed-server/vary-client. <b>0 failures</b> at every point.</div>
     <div class="tbl"><table>
-      <caption>llama.cpp ran cleanly on a fixed 100-slot server; vLLM omitted.</caption>
-      <thead><tr><th>Engine</th><th>C</th><th>tok/s</th><th>TTFT p99 (s)</th><th>Lat p50 (s)</th><th>Status</th></tr></thead>
+      <caption>Aggregate output tok/s (bf16, 4B, A5000). Best per row in bold-teal.</caption>
+      <thead><tr><th>Concurrency</th><th>llama.cpp bf16</th><th>SGLang bf16</th><th>vLLM bf16</th></tr></thead>
       <tbody>
-        <tr><td>llama.cpp Q6_K</td><td>1</td><td>118.1</td><td>0.08</td><td>2.17</td><td><span class="tag gpu">20/0 ok</span></td></tr>
-        <tr><td>llama.cpp Q6_K</td><td>30</td><td>370.5</td><td>1.70</td><td>22.1</td><td><span class="tag gpu">600/0 ok</span></td></tr>
-        <tr><td>llama.cpp Q6_K</td><td>100</td><td>753.1</td><td>5.29</td><td>33.6</td><td><span class="tag gpu">2000/0 ok</span></td></tr>
-        <tr class="dim"><td>vLLM bf16</td><td>1/30/100</td><td>—</td><td>—</td><td>—</td><td><span class="tag void">0 requests · never listened</span></td></tr>
+        <tr><td>1</td><td class="gpu">61.3</td><td>34.7</td><td class="gpu">67.9</td></tr>
+        <tr><td>8</td><td>382.2</td><td>258.1</td><td class="gpu">478.7</td></tr>
+        <tr><td>16</td><td>381.5</td><td>499.7</td><td class="gpu">853.3</td></tr>
+        <tr><td>32</td><td>268.1</td><td>900.7</td><td class="gpu">1297.0</td></tr>
+        <tr><td>64</td><td class="bad">421.2</td><td>1647.3</td><td class="gpu">1762.7</td></tr>
+        <tr><td>TTFT p50 @ C=64</td><td>0.98 s</td><td>1.06 s</td><td class="gpu">0.60 s</td></tr>
       </tbody>
     </table></div>
-    <p class="col">One real finding: at fixed 100 slots, C=30 gives only <b>370 tok/s</b> vs 720 with dedicated 30 slots (<a href="concurrency.html">§ concurrency</a>) — consistent with over-provisioning overhead (70 idle slots), though the cause wasn't isolated. Right-size slots to expected load.</p>
+    <p class="col"><b>At C=1 they tie</b> (llama.cpp 61 ≈ vLLM 68 &gt; SGLang 35). As concurrency climbs, <b>vLLM (PagedAttention) and SGLang (RadixAttention) scale near-linearly</b> while <b>llama.cpp plateaus and goes host-bound</b> (382→268→421). By C=64 vLLM/SGLang are <b>~4× llama.cpp</b>, with vLLM also holding the lowest TTFT under load.</p>
+    <div class="callout"><span class="lab">Which for what</span><b>llama.cpp:</b> simplest to deploy (one static binary, GGUF, CPU/Metal reach), competitive at low concurrency, higher memory floor (preallocated KV). <b>vLLM:</b> throughput+latency winner for many users, paged KV — but a heavier, version-sensitive stack (as the VOID episode showed). <b>SGLang:</b> scales like vLLM under load (RadixAttention shines with shared prefixes — which we <em>disabled</em>, so its multi-turn edge is understated), slowest at C=1.</div>
+    <div class="callout warn"><span class="lab">Keep attached</span>This is <b>bf16 for all three</b> — not each engine's optimal quant (low-bit GGUF / AWQ / FP8 would shift their own curves); <b>prefix caching off</b>; one 4B model / one workload. <b>No engine is "inherently" fastest</b> — the numbers combine scheduler, KV design, and kernels. The new models on the <a href="models.html">model-scaling page</a> ran on llama.cpp only (vLLM 0.11.0 predates their architectures).</div>
   </section>
 
   <section>

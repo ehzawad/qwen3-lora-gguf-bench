@@ -1,0 +1,81 @@
+{
+  "engine": "qwen3.5-9b",
+  "tag": "qwen3.5-9b-c032",
+  "concurrency": 32,
+  "requests_ok": 320,
+  "requests_failed": 0,
+  "completion_tokens_total": 81920,
+  "makespan_s": 305.2897817880148,
+  "output_tokens_per_s": 268.33521751108947,
+  "output_tokens_per_min": 16100.113050665368,
+  "server_generated_tokens_delta": 81920.0,
+  "prompt_tokens_example": 251,
+  "ttft_s": {
+    "p50": null,
+    "p90": null,
+    "p95": null,
+    "p99": null,
+    "max": null
+  },
+  "latency_s": {
+    "p50": 30.27582838095259,
+    "p90": 33.81800367694814,
+    "p95": 34.36734266206622,
+    "p99": 35.70423297199886,
+    "max": 35.77380543691106
+  },
+  "vram_ready_mib": 10954,
+  "vram_idle_mib": 10954,
+  "telemetry": {
+    "gpu_util_pct": {
+      "median": 70.0,
+      "p95": 99.0,
+      "peak": 100.0,
+      "min": 4.0,
+      "samples": 307
+    },
+    "mem_controller_util_pct_proxy": {
+      "median": 45.0,
+      "p95": 55.0,
+      "peak": 56.0,
+      "min": 0.0,
+      "samples": 307
+    },
+    "power_w": {
+      "median": 199.9,
+      "p95": 228.09,
+      "peak": 248.24,
+      "min": 83.77,
+      "samples": 307
+    },
+    "sm_clock_mhz": {
+      "median": 1650.0,
+      "p95": 1860.0,
+      "peak": 1875.0,
+      "min": 1500.0,
+      "samples": 307
+    },
+    "mem_used_mib": {
+      "median": 10952.0,
+      "p95": 10954.0,
+      "peak": 10954.0,
+      "min": 10952.0,
+      "samples": 307
+    },
+    "temperature_c": {
+      "median": 76.0,
+      "p95": 78.0,
+      "peak": 78.0,
+      "min": 69.0,
+      "samples": 307
+    },
+    "cpu_system_pct": {
+      "median": 8.7,
+      "p95": 10.1,
+      "peak": 14.0,
+      "samples": 307
+    },
+    "cpu_server_proc_pct": null
+  },
+  "failures_sample": []
+}

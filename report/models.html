@@ -1,0 +1,129 @@
+<title>Model Choice at 4-bit — Qwen3-4B vs Qwen3.5-9B vs Gemma-4-E2B</title>
+<style>
+  :root{--ground:#f5f7fa;--panel:#fff;--ink:#171b24;--muted:#5a6474;--faint:#8b95a6;--line:#dde3ec;--gpu:#17998a;--gpu-soft:#d3ece8;--cpu:#c67e12;--cpu-soft:#f6e6c9;--bad:#c8443a;--shadow:0 1px 2px rgba(20,30,50,.06),0 8px 30px rgba(20,30,50,.06);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--serif:Georgia,"Iowan Old Style",serif}
+  @media(prefers-color-scheme:dark){:root{--ground:#0b0e14;--panel:#12161f;--ink:#e6e9f0;--muted:#9aa4b6;--faint:#6b7688;--line:#232a37;--gpu:#2fc7b3;--gpu-soft:#123330;--cpu:#e8a83e;--cpu-soft:#33270f;--bad:#e5675c;--shadow:0 1px 2px rgba(0,0,0,.4),0 10px 34px rgba(0,0,0,.35)}}
+  :root[data-theme="light"]{--ground:#f5f7fa;--panel:#fff;--ink:#171b24;--muted:#5a6474;--faint:#8b95a6;--line:#dde3ec;--gpu:#17998a;--gpu-soft:#d3ece8;--cpu:#c67e12;--cpu-soft:#f6e6c9}
+  :root[data-theme="dark"]{--ground:#0b0e14;--panel:#12161f;--ink:#e6e9f0;--muted:#9aa4b6;--faint:#6b7688;--line:#232a37;--gpu:#2fc7b3;--gpu-soft:#123330;--cpu:#e8a83e;--cpu-soft:#33270f}
+  *{box-sizing:border-box}body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--serif);font-size:18px;line-height:1.62;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}.col{max-width:68ch}a{color:var(--gpu)}
+  h1,h2,h3{font-family:var(--sans);line-height:1.15;text-wrap:balance;letter-spacing:-.015em}code,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .eyebrow{font-family:var(--sans);text-transform:uppercase;letter-spacing:.14em;font-size:12px;font-weight:650;color:var(--faint)}
+  .nav{font-family:var(--sans);font-size:13px;display:flex;gap:14px;flex-wrap:wrap;padding:16px 0;border-bottom:1px solid var(--line)}.nav a{color:var(--muted);text-decoration:none}.nav a.on{color:var(--gpu);font-weight:650}
+  header.hero{border-bottom:1px solid var(--line);background:radial-gradient(120% 140% at 100% -20%,var(--gpu-soft) 0,transparent 55%),radial-gradient(120% 140% at 0 -10%,var(--cpu-soft) 0,transparent 50%)}
+  .hero-in{padding:48px 0 34px}h1{font-size:clamp(26px,4.2vw,40px);font-weight:780;margin:12px 0 8px}.lede{font-size:19px;color:var(--muted);max-width:66ch;margin:0}
+  section{padding:38px 0;border-bottom:1px solid var(--line)}h2{font-size:clamp(22px,3vw,28px);font-weight:720;margin:0 0 14px}h3{font-family:var(--sans);font-size:17px;margin:24px 0 6px}.col p{margin:13px 0}
+  .tbl{overflow-x:auto;margin:20px 0;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:var(--shadow)}table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+  caption{text-align:left;font-family:var(--sans);font-size:13px;color:var(--muted);padding:12px 16px 0}th,td{padding:7px 13px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}
+  thead th{font-family:var(--sans);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:650}tbody tr:last-child td{border-bottom:none}
+  td.gpu{color:var(--gpu);font-weight:650}td.cpu{color:var(--cpu);font-weight:650}td.bad{color:var(--bad);font-weight:650}
+  .callout{border-left:3px solid var(--gpu);background:var(--panel);border-radius:0 12px 12px 0;padding:14px 18px;margin:20px 0;font-size:16.5px;box-shadow:var(--shadow)}.callout.warn{border-color:var(--cpu)}.callout.bad{border-color:var(--bad)}.callout .lab{font-family:var(--sans);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);display:block;margin-bottom:4px}
+  .fig{margin:22px 0;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:var(--shadow);padding:18px 18px 10px}.fig .cap{font-family:var(--sans);font-size:12.5px;color:var(--muted);margin:8px 2px 0}
+  .lg{font-family:var(--sans);font-size:12px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap;margin:2px 0 0}.lg i{width:11px;height:11px;border-radius:2px;display:inline-block;vertical-align:middle;margin-right:5px}
+  .foot{padding:34px 0 64px;color:var(--muted);font-size:15px}.foot a{font-family:var(--mono);font-size:14px}
+  .kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:22px 0}
+  .kpi .c{border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:var(--shadow);padding:14px 16px}.kpi .n{font-family:var(--sans);font-weight:780;font-size:24px;letter-spacing:-.02em}.kpi .l{font-family:var(--sans);font-size:12.5px;color:var(--muted);margin-top:2px}
+</style>
+
+<header class="hero"><div class="wrap">
+  <div class="nav"><a href="index.html">◂ Field guide</a><a href="concurrency.html">Concurrency</a><a href="context.html">Context &amp; accuracy</a><a href="precision.html">Precision</a><a href="engines.html">Engines</a><a href="models.html" class="on">Model choice</a><a href="lora.html">LoRA &amp; SVD</a><a href="locust.html">Locust</a></div>
+  <div class="hero-in">
+    <div class="eyebrow">§10 · model scaling at a matched Q4_K_M tier · single A5000</div>
+    <h1>Model choice at 4-bit: 4B vs 9B vs an "E2B"</h1>
+    <p class="lede">On the same 24 GB GPU, how do a <b>bigger</b> model (Qwen3.5-9B) and a <b>smaller efficiency</b> model (Gemma-4-E2B) compare to our 4B? The punchline: <b>serving footprint tracks attention geometry, not parameter count</b>.</p>
+  </div>
+</div></header>
+
+<main class="wrap">
+  <section>
+    <h2>The three models</h2>
+    <div class="tbl"><table>
+      <caption>Text-only GGUFs, self-quantized from bf16 with the <em>identical</em> <code>llama-quantize Q4_K_M</code> command, same llama.cpp build.</caption>
+      <thead><tr><th>Model</th><th>Family</th><th>GGUF params (text)</th><th>HF total</th><th>bits/weight</th></tr></thead>
+      <tbody>
+        <tr><td>Qwen3-4B (ours)</td><td>Qwen3, dense</td><td>4.02B</td><td>~4.0B</td><td>4.97</td></tr>
+        <tr><td>Qwen3.5-9B</td><td>Qwen3.5, <b>dense</b></td><td>8.95B</td><td>~9.65B</td><td>5.03</td></tr>
+        <tr><td>Gemma-4-E2B</td><td>Gemma 4, "E2B"</td><td>4.65B</td><td>~5.1B</td><td class="cpu">5.90</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout warn"><span class="lab">Read this first — the fairness rules</span><b>Matched <em>nominal</em> Q4_K_M tier, NOT iso-precision.</b> Identical quantize commands produced <b>different bits-per-weight</b> — llama.cpp keeps far more of Gemma's tensors at F32/Q6_K (its per-layer-embedding machinery), so Gemma's "Q4_K_M" is effectively <b>~5.9-bit, the densest of the three</b>. This is <b>speed &amp; footprint only, not quality</b> (different tokenizers → tok/s ≠ equal work; no cross-model perplexity), and <b>text-only</b> (both new models are multimodal). Qwen3.5-9B is <b>dense</b>, not MoE. No "inherently faster/leaner" claims — every number combines architecture + quant recipe + kernels.</div>
+  </section>
+
+  <section>
+    <h2>1 · Single-stream speed &mdash; inverse to size</h2>
+    <div class="kpi">
+      <div class="c"><div class="n gpu">160 <span style="font-size:14px;color:var(--muted)">tok/s</span></div><div class="l">Gemma-4-E2B decode (fastest)</div></div>
+      <div class="c"><div class="n">147 <span style="font-size:14px;color:var(--muted)">tok/s</span></div><div class="l">Qwen3-4B decode</div></div>
+      <div class="c"><div class="n cpu">82 <span style="font-size:14px;color:var(--muted)">tok/s</span></div><div class="l">Qwen3.5-9B decode (biggest)</div></div>
+    </div>
+    <div class="tbl"><table>
+      <caption>llama-bench, Q4_K_M, single sequence. Decode ranks inverse to total size.</caption>
+      <thead><tr><th>Model</th><th>Prefill pp512 (tok/s)</th><th>Decode tg128 (tok/s)</th></tr></thead>
+      <tbody>
+        <tr><td>Gemma-4-E2B</td><td class="gpu">7080</td><td class="gpu">160.5</td></tr>
+        <tr><td>Qwen3-4B (ours)</td><td>6085</td><td>146.7</td></tr>
+        <tr><td>Qwen3.5-9B</td><td class="cpu">2834</td><td class="cpu">82.3</td></tr>
+      </tbody>
+    </table></div>
+    <p class="col"><b>Gemma leads even though its quant is the densest</b> (5.9 bpw) — its "E2B ≈ 2B effective" design means fewer params are active per token, and that shows up as real throughput. The dense 9.65B Qwen3.5 decodes at ~half the 4B's rate and prefills ~2× slower: the honest price of the bigger model.</p>
+  </section>
+
+  <section>
+    <h2>2 · Footprint is decoupled from parameter count</h2>
+    <div class="tbl"><table>
+      <caption>KV geometry (from each GGUF) + measured static VRAM with a 64-slot server (×1k ctx/slot). KV, not weights, dominates at concurrency.</caption>
+      <thead><tr><th>Model</th><th>KV heads</th><th>head_dim</th><th>Layers</th><th>f16 KV/token</th><th>Weights</th><th>VRAM @ 64 slots</th></tr></thead>
+      <tbody>
+        <tr><td>Gemma-4-E2B</td><td>1 (MQA)</td><td>512</td><td>35</td><td class="gpu">70 KiB</td><td>3.43 GB</td><td class="gpu">3.2 GB</td></tr>
+        <tr><td>Qwen3.5-9B</td><td>4</td><td>256</td><td>32</td><td>128 KiB</td><td>5.63 GB</td><td>10.9 GB</td></tr>
+        <tr><td>Qwen3-4B</td><td>8</td><td>128</td><td>36</td><td class="cpu">144 KiB</td><td>2.50 GB</td><td class="cpu">12.2 GB</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout"><span class="lab">The counterintuitive result</span>The <b>9.65B model needs LESS VRAM at 64 slots than our 4B</b> (10.9 vs 12.2 GB) — its aggressive GQA (4 KV heads) + fewer layers give it a <em>smaller</em> KV/token than the 4B's 8-head config. <b>Gemma is leanest by far</b> (3.2 GB for the whole 64-slot server): extreme MQA (1 KV head) + sliding-window attention keep KV tiny. <b>Model size does not predict serving footprint — attention geometry does.</b></div>
+  </section>
+
+  <section>
+    <h2>3 · Concurrency throughput</h2>
+    <div class="fig">
+      <svg viewBox="0 0 720 280" width="100%" role="img" aria-label="Aggregate throughput vs concurrency for the three models"><g id="cc"></g></svg>
+      <div class="lg"><span><i style="background:var(--gpu)"></i>Gemma-4-E2B</span><span><i style="background:#6b8cce"></i>Qwen3-4B</span><span><i style="background:var(--cpu)"></i>Qwen3.5-9B</span></div>
+      <div class="cap">Aggregate output tok/s, Q4_K_M, fixed 64-slot server, prefix-cache off, 0 failures. Gemma ≈ 4B; the 9B runs at ~half.</div>
+    </div>
+    <div class="tbl"><table>
+      <caption>Aggregate tok/s (~256-token generations). Still climbing at C=64.</caption>
+      <thead><tr><th>C</th><th>Gemma-4-E2B</th><th>Qwen3-4B</th><th>Qwen3.5-9B</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td class="gpu">161</td><td>127</td><td class="cpu">72</td></tr>
+        <tr><td>8</td><td class="gpu">361</td><td>299</td><td class="cpu">154</td></tr>
+        <tr><td>16</td><td class="gpu">537</td><td>533</td><td class="cpu">259</td></tr>
+        <tr><td>32</td><td>560</td><td class="gpu">568</td><td class="cpu">268</td></tr>
+        <tr><td>64</td><td class="gpu">650</td><td>639</td><td class="cpu">302</td></tr>
+      </tbody>
+    </table></div>
+    <p class="col">Gemma and the 4B track each other closely; <b>Qwen3.5-9B runs at ~45–50% of their throughput</b> throughout — a consistent, size-driven gap. On one A5000 you either serve the fast small/efficient models at high concurrency, or the bigger 9.65B model at roughly half the aggregate rate. A direct <b>capability-for-throughput trade you now have numbers for</b>.</p>
+    <div class="callout bad"><span class="lab">Caveats</span>The <b>bpw differences</b> (Gemma 5.9 vs ~5.0) make this a matched-<em>tier</em>, not equal-precision, comparison. <b>TTFT was captured only for the 4B</b> (a streaming-format quirk left Qwen3.5/Gemma TTFT unrecorded — throughput/VRAM unaffected). All runs are <b>llama.cpp only</b>: vLLM 0.11.0 predates <code>qwen35</code>/<code>gemma4</code>, so a multi-engine take on the new models is a separate follow-up. Text-only, one GPU, one quant tier.</div>
+  </section>
+
+  <div class="col foot">Raw data: <code>results/modelscale-20260721T053813Z/</code> (single_stream.json, benchmark-*.json, provenance.json with SHA-256 + bpw audit). Full write-up: §10 of the <a href="index.html">field guide</a>.<br><a href="https://github.com/ehzawad/qwen3-lora-gguf-bench">github.com/ehzawad/qwen3-lora-gguf-bench</a></div>
+</main>
+
+<script>
+(function(){
+  var g=document.getElementById('cc');if(!g)return;var NS='http://www.w3.org/2000/svg';
+  var W=720,H=280,L=54,R=16,T=16,B=40,x0=L,x1=W-R,y0=H-B,y1=T,maxY=700;
+  var cs=getComputedStyle(document.documentElement);
+  var line=cs.getPropertyValue('--line'),muted=cs.getPropertyValue('--muted'),gpu=cs.getPropertyValue('--gpu'),cpu=cs.getPropertyValue('--cpu');
+  var Cs=[1,8,16,32,64];
+  var gem=[161,361,537,560,650],q4=[127,299,533,568,639],q9=[72,154,259,268,302];
+  function X(i){return x0+(i/(Cs.length-1))*(x1-x0);}
+  function Y(v){return y0-(v/maxY)*(y0-y1);}
+  function el(n,a){var e=document.createElementNS(NS,n);for(var k in a)e.setAttribute(k,a[k]);return e;}
+  [0,175,350,525,700].forEach(function(v){g.appendChild(el('line',{x1:x0,y1:Y(v),x2:x1,y2:Y(v),stroke:line,'stroke-width':1}));
+    var t=el('text',{x:x0-8,y:Y(v)+4,'text-anchor':'end','font-size':11,fill:muted,'font-family':'ui-monospace,monospace'});t.textContent=v;g.appendChild(t);});
+  Cs.forEach(function(c,i){var t=el('text',{x:X(i),y:y0+22,'text-anchor':'middle','font-size':11,fill:muted,'font-family':'ui-monospace,monospace'});t.textContent='C='+c;g.appendChild(t);});
+  var yl=el('text',{x:15,y:(y0+y1)/2,'text-anchor':'middle','font-size':11,fill:muted,'font-family':'system-ui,sans-serif',transform:'rotate(-90 15 '+((y0+y1)/2)+')'});yl.textContent='aggregate tok/s';g.appendChild(yl);
+  function ser(d,color){var p=d.map(function(v,i){return (i?'L':'M')+X(i)+' '+Y(v);}).join(' ');
+    g.appendChild(el('path',{d:p,fill:'none',stroke:color,'stroke-width':2.5,'stroke-linejoin':'round'}));
+    d.forEach(function(v,i){g.appendChild(el('circle',{cx:X(i),cy:Y(v),r:3.6,fill:color}));});}
+  ser(gem,gpu);ser(q4,'#6b8cce');ser(q9,cpu);
+})();
+</script>

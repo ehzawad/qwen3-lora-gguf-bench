@@ -1,0 +1,80 @@
+timestamp, pstate, clocks.current.sm [MHz], clocks.current.memory [MHz], power.draw.instant [W], power.limit [W], temperature.gpu, utilization.gpu [%], utilization.memory [%], memory.used [MiB], pcie.link.gen.gpucurrent, pcie.link.width.current, clocks_event_reasons.sw_power_cap, clocks_event_reasons.hw_thermal_slowdown, clocks_event_reasons.sw_thermal_slowdown
+2026/07/21 02:18:16.701, P2, 1695, 7601, 87.35, 230.00, 71, 4, 0, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:17.706, P2, 1695, 7601, 85.88, 230.00, 70, 6, 0, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:18.706, P2, 1635, 7601, 219.20, 230.00, 74, 99, 35, 3250, 3, 16, Active, Not Active, Not Active
+2026/07/21 02:18:19.707, P2, 1875, 7601, 163.06, 230.00, 73, 44, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:20.708, P2, 1875, 7601, 162.85, 230.00, 73, 44, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:21.709, P2, 1875, 7601, 162.67, 230.00, 73, 43, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:22.709, P2, 1875, 7601, 162.32, 230.00, 73, 43, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:23.710, P2, 1875, 7601, 162.68, 230.00, 73, 45, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:24.711, P2, 1875, 7601, 162.25, 230.00, 73, 43, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:25.711, P2, 1875, 7601, 134.06, 230.00, 72, 19, 3, 3250, 3, 16, Active, Not Active, Not Active
+2026/07/21 02:18:26.712, P2, 1875, 7601, 160.15, 230.00, 74, 64, 15, 3250, 3, 16, Active, Not Active, Not Active
+2026/07/21 02:18:27.713, P2, 1875, 7601, 162.60, 230.00, 73, 44, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:28.714, P2, 1875, 7601, 162.54, 230.00, 73, 45, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:29.714, P2, 1875, 7601, 162.14, 230.00, 73, 45, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:30.715, P2, 1875, 7601, 162.07, 230.00, 72, 43, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:31.716, P2, 1875, 7601, 162.20, 230.00, 72, 44, 16, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:32.717, P2, 1875, 7601, 159.78, 230.00, 72, 44, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:33.718, P2, 1650, 7601, 217.93, 230.00, 73, 84, 32, 3250, 3, 16, Active, Not Active, Not Active
+2026/07/21 02:18:34.719, P2, 1875, 7601, 162.50, 230.00, 72, 45, 16, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:35.720, P2, 1875, 7601, 161.57, 230.00, 72, 45, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:36.721, P2, 1875, 7601, 161.24, 230.00, 72, 44, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:37.721, P2, 1875, 7601, 163.94, 230.00, 72, 46, 16, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:38.722, P2, 1875, 7601, 161.23, 230.00, 72, 45, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:39.723, P2, 1875, 7601, 162.13, 230.00, 72, 46, 16, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:40.724, P2, 1875, 7601, 134.79, 230.00, 71, 23, 3, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:41.724, P2, 1695, 7601, 206.72, 230.00, 74, 70, 23, 3250, 3, 16, Active, Not Active, Not Active
+2026/07/21 02:18:42.725, P2, 1875, 7601, 160.82, 230.00, 72, 44, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:43.726, P2, 1875, 7601, 160.32, 230.00, 72, 45, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:44.726, P2, 1875, 7601, 163.46, 230.00, 72, 42, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:45.729, P2, 1875, 7601, 163.74, 230.00, 72, 43, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:46.730, P2, 1875, 7601, 160.15, 230.00, 72, 45, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:47.731, P2, 1875, 7601, 161.30, 230.00, 71, 45, 16, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:48.731, P2, 1875, 7601, 108.32, 230.00, 70, 7, 0, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:49.732, P2, 1875, 7601, 158.69, 230.00, 72, 67, 16, 3250, 3, 16, Active, Not Active, Not Active
+2026/07/21 02:18:50.733, P2, 1875, 7601, 160.39, 230.00, 72, 44, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:51.734, P2, 1875, 7601, 160.25, 230.00, 72, 45, 16, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:52.734, P2, 1875, 7601, 160.79, 230.00, 71, 45, 16, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:53.735, P2, 1875, 7601, 159.66, 230.00, 71, 43, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:54.736, P2, 1875, 7601, 159.53, 230.00, 71, 43, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:55.736, P2, 1875, 7601, 159.38, 230.00, 71, 44, 16, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:56.737, P2, 1665, 7601, 216.95, 230.00, 71, 75, 27, 3250, 3, 16, Active, Not Active, Not Active
+2026/07/21 02:18:57.738, P2, 1875, 7601, 159.47, 230.00, 71, 44, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:58.738, P2, 1875, 7601, 162.63, 230.00, 71, 45, 17, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:18:59.739, P2, 1875, 7601, 159.60, 230.00, 71, 44, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:00.740, P2, 1875, 7601, 160.38, 230.00, 71, 45, 16, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:01.741, P2, 1875, 7601, 161.39, 230.00, 71, 45, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:02.741, P2, 1875, 7601, 159.94, 230.00, 71, 44, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:03.742, P2, 1875, 7601, 144.08, 230.00, 70, 24, 7, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:04.743, P2, 1770, 7601, 226.61, 230.00, 73, 99, 37, 3250, 3, 16, Active, Not Active, Not Active
+2026/07/21 02:19:05.743, P2, 1875, 7601, 159.71, 230.00, 71, 43, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:06.744, P2, 1875, 7601, 159.33, 230.00, 71, 45, 16, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:07.745, P2, 1875, 7601, 161.10, 230.00, 71, 43, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:08.746, P2, 1875, 7601, 159.23, 230.00, 71, 45, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:09.746, P2, 1875, 7601, 158.90, 230.00, 71, 44, 16, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:10.747, P2, 1875, 7601, 158.81, 230.00, 71, 44, 16, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:11.748, P2, 1875, 7601, 105.50, 230.00, 69, 0, 0, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:12.749, P2, 1875, 7601, 157.89, 230.00, 71, 45, 16, 3250, 3, 16, Active, Not Active, Not Active
+2026/07/21 02:19:13.749, P2, 1875, 7601, 158.73, 230.00, 71, 42, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:14.750, P2, 1875, 7601, 159.54, 230.00, 70, 45, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:15.751, P2, 1875, 7601, 159.58, 230.00, 70, 45, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:16.752, P2, 1875, 7601, 160.39, 230.00, 70, 44, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:17.752, P2, 1875, 7601, 159.07, 230.00, 71, 45, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:18.753, P2, 1875, 7601, 158.98, 230.00, 71, 44, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:19.754, P2, 1815, 7601, 205.04, 230.00, 71, 98, 33, 3250, 3, 16, Active, Not Active, Not Active
+2026/07/21 02:19:20.754, P2, 1875, 7601, 159.19, 230.00, 70, 45, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:21.755, P2, 1875, 7601, 158.79, 230.00, 70, 44, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:22.756, P2, 1875, 7601, 158.55, 230.00, 71, 45, 16, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:23.757, P2, 1875, 7601, 159.75, 230.00, 70, 45, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:24.757, P2, 1875, 7601, 159.22, 230.00, 70, 44, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:25.758, P2, 1875, 7601, 159.45, 230.00, 70, 45, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:26.759, P2, 1875, 7601, 109.55, 230.00, 69, 15, 0, 3250, 3, 16, Active, Not Active, Not Active
+2026/07/21 02:19:27.759, P2, 1830, 7601, 196.60, 230.00, 72, 87, 29, 3250, 3, 16, Active, Not Active, Not Active
+2026/07/21 02:19:28.760, P2, 1875, 7601, 158.96, 230.00, 70, 45, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:29.761, P2, 1875, 7601, 158.28, 230.00, 70, 44, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:30.762, P2, 1875, 7601, 158.08, 230.00, 70, 42, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:31.762, P2, 1875, 7601, 158.43, 230.00, 70, 45, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:32.763, P2, 1875, 7601, 158.90, 230.00, 70, 44, 16, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:33.764, P2, 1875, 7601, 158.23, 230.00, 70, 43, 15, 3250, 3, 16, Not Active, Not Active, Not Active
+2026/07/21 02:19:34.764, P2, 1875, 7601, 105.98, 230.00, 68, 3, 0, 3250, 3, 16, Not Active, Not Active, Not Active

@@ -1,0 +1,26 @@
+[
+  {
+    "name": "qwen3-4b (ours)",
+    "path": "models/gguf-ext/self-q4km/qwen3-4b-legal-Q4_K_M.gguf",
+    "size_bytes": 2497278784,
+    "sha256": "f769be48b04df1783770af6a408675b7adec0a5dff646bde3fd1aaf22579046d",
+    "params": 4022468096,
+    "bpw": 4.967
+  },
+  {
+    "name": "qwen3.5-9b",
+    "path": "models/gguf-ext/self-q4km/qwen3.5-9b-Q4_K_M.gguf",
+    "size_bytes": 5629109216,
+    "sha256": "1a5b4c78879067d135370b414fa37a7a0e00dbb26fcf33951a69e56462f71c03",
+    "params": 8953803264,
+    "bpw": 5.029
+  },
+  {
+    "name": "gemma-4-e2b",
+    "path": "models/gguf-ext/self-q4km/gemma-4-e2b-Q4_K_M.gguf",
+    "size_bytes": 3427880384,
+    "sha256": "6094eaef03eba45957141653c5e54dc6cf92bef0430994e0e0bcad2e9adddf0c",
+    "params": 4647450147,
+    "bpw": 5.901
+  }
+]

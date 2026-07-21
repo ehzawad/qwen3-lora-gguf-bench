@@ -1,0 +1,37 @@
+### qwen3-4b  (np=64 slotctx=1024 ctx=65536) 05:40:13 ###
+  static VRAM: idle=294 load=12208 (weights+KV alloc for 64 slots)
+[ext] qwen3-4b C=1: 7590 tok/min (126.5 tok/s) ok=10 fail=0 ttft_p50=0.13891867001075298
+    c=1 VRAM=12214 MiB
+[ext] qwen3-4b C=8: 17927 tok/min (298.8 tok/s) ok=80 fail=0 ttft_p50=1.0268123969435692
+    c=8 VRAM=12218 MiB
+[ext] qwen3-4b C=16: 31972 tok/min (532.9 tok/s) ok=160 fail=0 ttft_p50=2.006581858964637
+    c=16 VRAM=12218 MiB
+[ext] qwen3-4b C=32: 34108 tok/min (568.5 tok/s) ok=320 fail=0 ttft_p50=2.085832654964179
+    c=32 VRAM=12218 MiB
+[ext] qwen3-4b C=64: 38315 tok/min (638.6 tok/s) ok=640 fail=0 ttft_p50=1.625756370020099
+    c=64 VRAM=12218 MiB
+### qwen3.5-9b  (np=64 slotctx=1024 ctx=65536) 05:52:06 ###
+  static VRAM: idle=294 load=10942 (weights+KV alloc for 64 slots)
+[ext] qwen3.5-9b C=1: 4300 tok/min (71.7 tok/s) ok=10 fail=0 ttft_p50=None
+    c=1 VRAM=10950 MiB
+[ext] qwen3.5-9b C=8: 9223 tok/min (153.7 tok/s) ok=80 fail=0 ttft_p50=None
+    c=8 VRAM=10952 MiB
+[ext] qwen3.5-9b C=16: 15519 tok/min (258.7 tok/s) ok=160 fail=0 ttft_p50=None
+    c=16 VRAM=10954 MiB
+[ext] qwen3.5-9b C=32: 16100 tok/min (268.3 tok/s) ok=320 fail=0 ttft_p50=None
+    c=32 VRAM=10952 MiB
+[ext] qwen3.5-9b C=64: 18106 tok/min (301.8 tok/s) ok=640 fail=0 ttft_p50=None
+    c=64 VRAM=10952 MiB
+### gemma-4-e2b  (np=64 slotctx=1024 ctx=65536) 06:16:15 ###
+  static VRAM: idle=294 load=3224 (weights+KV alloc for 64 slots)
+[ext] gemma-4-e2b C=1: 9669 tok/min (161.1 tok/s) ok=10 fail=0 ttft_p50=None
+    c=1 VRAM=3246 MiB
+[ext] gemma-4-e2b C=8: 21628 tok/min (360.5 tok/s) ok=80 fail=0 ttft_p50=None
+    c=8 VRAM=3250 MiB
+[ext] gemma-4-e2b C=16: 32194 tok/min (536.6 tok/s) ok=160 fail=0 ttft_p50=None
+    c=16 VRAM=3250 MiB
+[ext] gemma-4-e2b C=32: 33604 tok/min (560.1 tok/s) ok=320 fail=0 ttft_p50=None
+    c=32 VRAM=3252 MiB
+[ext] gemma-4-e2b C=64: 39002 tok/min (650.0 tok/s) ok=640 fail=0 ttft_p50=None
+    c=64 VRAM=3284 MiB
+### MODEL-SCALE DONE (results/modelscale-20260721T053813Z) ###

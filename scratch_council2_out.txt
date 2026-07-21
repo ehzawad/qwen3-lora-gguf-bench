@@ -1,0 +1,347 @@
+OpenAI Codex v0.144.0
+--------
+workdir: /mnt/sdb/arafat/ehz/llm/qwen3-lora-gguf-bench
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019f8312-0fa4-7f13-be8b-af81656ae9c8
+--------
+user
+You are a COUNCIL of three adversarial reviewers (a systems/inference expert, a benchmarking-methodology skeptic, and a pragmatic release engineer). Reconcile a PLAN, do not write code. Be terse and concrete.
+
+CONTEXT — an existing benchmark project on ONE NVIDIA RTX A5000 (24 GB), llama.cpp + vLLM, studying a Qwen3-4B legal LoRA (merged, GGUF Q4_K_M / Q6_K / bf16). Prior work measured: concurrency-throughput curves (peak ~800 tok/s at C=64 then host-bound decline), context-window/KV VRAM frontier, wikitext perplexity per quant, a multi-turn chatbot, and (in progress) a fair iso-precision bf16 llama.cpp-vs-vLLM engine comparison. Harness: closed-loop OpenAI-compatible client, 256-token prompts / exactly 256 generated (ignore_eos, temp 0), concurrency sweep 1..100, VRAM + TTFT + tok/s telemetry.
+
+NEW GOAL (user request): "see Qwen3 9B 4bit and Gemma-4 E2B 4bit perform in the context of what you have been doing."
+
+VERIFIED FACTS (checked on HuggingFace today; these models post-date the assistant's training):
+- "Qwen3 9B" = Qwen/Qwen3.5-9B (Mar 2026). ~9.65B params, architecture `qwen3_5`, MoE, multimodal (image-text-to-text). Q4_K_M GGUF exists (unsloth/Qwen3.5-9B-GGUF, lmstudio-community/Qwen3.5-9B-GGUF).
+- "Gemma-4 E2B" = google/gemma-4-E2B-it (updated 2026-07-20, i.e. yesterday). ~5.1B params (E2B = ~2B "effective"), architecture `gemma4`, multimodal (any-to-any). Official GGUF from ggml-org/gemma-4-E2B-it-GGUF.
+- Both are BRAND-NEW architectures, newer than the project's vendored llama.cpp build (91d2fc38, ~Jul 2025) and newer than the installed vLLM 0.11.0. Serving them needs a llama.cpp rebuild from recent master; vLLM 0.11.0 almost certainly cannot serve qwen3_5 / gemma4.
+- Baseline for comparison: the project's own Qwen3-4B legal model at Q4_K_M (dense, 4B).
+
+PROPOSED PLAN:
+1. Rebuild llama.cpp from recent master into a SEPARATE build dir (preserve the 91d2fc38 build + its provenance for prior results). Record the new build commit.
+2. Download pre-made Q4_K_M GGUFs: Qwen3.5-9B (unsloth/lmstudio), Gemma-4-E2B (ggml-org). Use text weights only (both are multimodal; benchmark the TEXT path only).
+3. Benchmark all three at 4-bit on the A5000 with the existing harness: (a) single-stream decode & prefill (llama-bench), (b) concurrency-throughput sweep 1..100, (c) VRAM footprint at load + per-token KV geometry / max-concurrency frontier, (d) optionally decode-vs-depth.
+4. Frame it strictly as a SPEED + MEMORY-FOOTPRINT comparison at a matched 4-bit tier, same harness/GPU — NOT a quality/accuracy comparison (different-capability models, different tokenizers), and text-only (no vision/audio). vLLM is out of scope for the new archs (note why).
+
+CRITIQUE THE PLAN. Specifically:
+- Is this a FAIR comparison? A 4B dense vs a 9.65B MoE vs a 5.1B/2B-effective multimodal model differ in params, active params, KV head geometry, tokenizer, and quant recipe (different GGUF authors → possibly different imatrix/quant mixes). What can I honestly claim, and what must I explicitly NOT claim? How do I neutralize the quant-recipe confound (e.g., requantize all three myself from bf16 with identical llama-quantize settings, vs. trust third-party GGUFs)?
+- MoE-specific pitfalls: Qwen3.5-9B MoE — total vs active params, expert memory, batch-size effects on MoE throughput, whether tok/s vs concurrency behaves differently than dense. What must I measure/label?
+- Gemma-4-E2B "effective 2B" (MatFormer/per-layer-embeddings): what does that mean for decode speed and VRAM, and what's the honest way to report its size?
+- KV-cache geometry differences (head dim, GQA groups, sliding-window attention in Gemma) change the context/concurrency frontier — how to compare fairly.
+- Risks: llama.cpp master build failing or lacking full arch support; multimodal GGUFs needing an mmproj/projector; tokenizer/chat-template mismatches skewing prompt token counts (fairness of "256-token prompt"); MoE + 24GB fit.
+- Scope: is text-only speed/footprint the right deliverable, or should I add a small perplexity/quality check per model? Should I attempt vLLM at all for these (e.g., a newer vLLM), or is that a rabbit hole?
+
+Output: (A) FAIR-COMPARISON RULES — the exact claims I may and may not make; (B) MUST-MEASURE / MUST-LABEL list; (C) top RISKS with mitigations, ranked; (D) a crisp verdict on scope (what to include, what to cut). Do not invent facts about these models beyond what's given; if something needs verifying at runtime, say so.
+
+warning: Skill descriptions were shortened to fit the 2% skills context budget. Codex can still see every skill, but some descriptions are shorter. Disable unused skills or plugins to leave more room for the rest.
+codex
+I’ll run this as three independent reviews—systems/inference, methodology, and release—and reconcile only the points that survive all three.
+codex
+The first review’s key correction is already clear: rerun the 4B baseline on the new binary. Old-build numbers can only be a regression bridge, not part of the headline comparison.
+collab: Wait
+collab: Wait
+collab: Wait
+collab: Wait
+collab: Wait
+collab: Wait
+codex
+The methodology review tightens “matched 4-bit” to “matched nominal Q4_K_M tier.” Identical labels do not imply equal precision, tensor mix, calibration, or retained quality—even after a common conversion command.
+collab: Wait
+collab: Wait
+codex
+Council verdict: fair only as a deployment benchmark of exact artifacts on a fixed system—not as a quality, parameter-efficiency, or architecture bake-off.
+
+## A. Fair-comparison rules
+
+### Claims you may make
+
+Use language like:
+
+> “On one RTX A5000, with llama.cpp commit X and configuration Y, these exact text-only Q4_K_M GGUF artifacts achieved the following native-token throughput, latency, and measured memory footprints.”
+
+You may compare:
+
+- Single-stream prefill and decode.
+- Throughput/latency at the same concurrency and sequence lengths.
+- Scaling curves and measured full-GPU feasibility.
+- Static VRAM, KV growth, workspace peaks, and the measured context × concurrency frontier.
+- Each model’s peak, provided you also show the shared feasible concurrency domain.
+
+Rerun the 4B baseline with the new llama.cpp binary. Its old-vs-new result is a regression bridge; historical numbers cannot appear as the direct baseline in the new headline chart.
+
+### Claims you must not make
+
+Do not claim:
+
+- “Iso-precision,” “equal 4-bit precision,” or equal retained quality. Say **matched nominal Q4_K_M tier**.
+- That one architecture is inherently faster or more memory-efficient. Results combine architecture, artifact recipe, kernels, tokenizer, batching, and runtime support.
+- That native tok/s represents equal text or useful work across tokenizers.
+- That a larger KV frontier means better context capability; attention semantics may differ.
+- Any accuracy, legal quality, multimodal, or universal performance ranking.
+- That Qwen performs 9.65B parameters of computation per token.
+- That Gemma is a “2B model,” uses 2B parameters per token, or should have 2B-class VRAM.
+
+Report Qwen as **~9.65B total parameters, MoE**. Report active parameters or routing topology only after authoritative/runtime verification. Active parameters do not determine resident expert memory.
+
+Report Gemma as **~5.1B total parameters, E2B designation (~2B “effective” as supplied)**. E2B/MatFormer/per-layer-embedding terminology does not establish what current llama.cpp executes or predict decode speed or VRAM; verify before interpreting it.
+
+### Quantization confound
+
+Reconciled approach:
+
+1. Use prebuilt GGUFs for bring-up.
+2. Preferred headline set: self-quantize all three from verified bf16 sources with one pinned converter/quantizer, identical Q4_K_M flags, and one recorded imatrix/calibration policy.
+3. Audit tensor types, exclusions, tensor bytes, and effective bytes/parameter. Identical commands still may not produce identical tensor treatment across architectures.
+4. If conversion support is unreliable, publish the prebuilt set as an **“available-artifact comparison”**. Do not imply controlled precision.
+5. Do not mix self-quantized and third-party artifacts in one controlled headline ranking.
+
+Use two workload views:
+
+- **Sequence-length controlled:** exactly 256 post-template native input tokens and 256 generated tokens.
+- **Application cross-check:** identical raw messages through each native template; report actual token counts, request latency, requests/s, and optionally output characters/bytes per second.
+
+Neither view controls both semantics and token count.
+
+## B. Must measure / must label
+
+### Provenance and execution
+
+- New llama.cpp commit, executable hash, compiler/CUDA versions, build flags.
+- Old and new 4B bridge result.
+- Exact GGUF repository revision, filename, SHA-256, file size, GGUF metadata, tensor-type histogram, and quantization logs where available.
+- Server and `llama-bench` flags: GPU layers, threads, context, batch/ubatch, KV dtype, flash attention, scheduler and prefix-cache settings.
+- GPU clocks/power state if controlled; host CPU utilization and thread settings, especially because the existing high-concurrency curve becomes host-bound.
+- Warm-up, repetitions, run ordering, and dispersion—not only the best run.
+
+### Placement and memory
+
+- Full-GPU versus CPU-offloaded tensors, including expert placement.
+- Load/static VRAM, host RAM, runtime/workspace peak, KV allocation, and first OOM/failing point.
+- Never silently reduce GPU layers, batch size, or other flags for one model.
+- Require successful completion, not merely server launch, when defining the frontier.
+
+### Performance
+
+- Separate prefill from batch-1 decode.
+- At every concurrency: native output tok/s, requests/s, TTFT p50/p95, inter-token or end-to-end latency, actual input/output lengths, failures, and OOMs.
+- Sweep requested C=1..100 until safe failure. Show:
+
+  - Comparisons at identical concurrency in the shared feasible domain.
+  - Each model’s independently labeled peak and maximum feasible point.
+
+### MoE-specific
+
+For Qwen, label or measure:
+
+- Total parameters and resident weight bytes.
+- Expert count, routing/top-k, and active-parameter estimate only if verified.
+- Actual/effective internal batch size, if exposed.
+- C=1 behavior and the complete concurrency curve.
+- GPU and host utilization.
+- Repeated runs over a fixed, diverse, unique prompt set.
+
+Larger batches may change routing diversity, locality, and scaling. If runtime batching/routing telemetry is unavailable, label it unavailable and do not attribute curve shape to MoE.
+
+### KV and tokenizer correctness
+
+- Runtime-verified layer count, KV heads, head dimension, attention modes, and sliding-window behavior; do not fill these from memory.
+- Theoretical KV bytes/token as a cross-check, plus empirical VRAM slope over context and live sequences.
+- Separate allocated KV from live/effective KV where exposed.
+- Empirically test whether any sliding-window implementation reduces or plateaus allocation.
+- Tokenizer revision, embedded chat template, BOS/EOS handling, and server-observed post-template counts.
+- Confirm no projector is loaded and no media inputs are used. Verify that text-only serving works without missing-projector or unsupported-tensor warnings.
+
+## C. Ranked risks and mitigations
+
+1. **Incomplete or incorrect new-architecture support.**  
+   Pin one tested master commit. Gate on clean loading, metadata parsing, reference-tokenizer parity, deterministic generation, exact lengths, and no unsupported/missing-tensor warnings. Otherwise report “unsupported at tested commit.”
+
+2. **Build drift invalidates the baseline.**  
+   Run all three on the same new binary; retain the old binary and use the 4B old/new bridge only to quantify drift.
+
+3. **Quant recipes masquerade as architecture differences.**  
+   Prefer the controlled self-quantized set. Otherwise downgrade to exact-artifact claims and publish the full quant audit.
+
+4. **Tokenizer/template mismatch invalidates 256-token fairness.**  
+   Count after template application using the server tokenizer; retain the identical-raw-message cross-check.
+
+5. **Silent CPU offload or 24 GB exhaustion.**  
+   Preflight load, short generation, then context/concurrency ramps. Inspect placement logs, VRAM, and host RAM. Mark failures rather than changing placement.
+
+6. **Unverified KV/sliding-window implementation behavior.**  
+   Measure allocation and decode behavior empirically. Do not infer a memory advantage from the architecture label.
+
+7. **MoE and host-side batching make curves workload-specific.**  
+   Use diverse unique prompts, repeat runs, expose actual batching where possible, and report latency alongside throughput.
+
+## D. Scope verdict
+
+Include:
+
+- Support/correctness gate.
+- Exact artifact and quantization provenance.
+- New-build rerun of all three plus the 4B build bridge.
+- Single-stream prefill/decode.
+- Concurrency scaling over the shared and per-model feasible domains.
+- Static memory, KV slope, and context × concurrency frontier.
+- Explicit MoE batch/concurrency behavior.
+- Text-only limitation.
+
+Cut:
+
+- Cross-model WikiText perplexity or a small “quality ranking.” Different tokenizers and model purposes make it misleading. Keep only a correctness smoke test. If quality matters, run a separate task-level legal/capability evaluation.
+- Multimodal benchmarking.
+- Generic decode-vs-depth from the initial release. Add it later only as a targeted attention-depth experiment after sliding-window behavior is verified.
+- vLLM 0.11.0. Do not attempt it. A newer-vLLM comparison should be a separate, version-pinned follow-up after official support for both architectures is verified.
+tokens used
+33,212
+Council verdict: fair only as a deployment benchmark of exact artifacts on a fixed system—not as a quality, parameter-efficiency, or architecture bake-off.
+
+## A. Fair-comparison rules
+
+### Claims you may make
+
+Use language like:
+
+> “On one RTX A5000, with llama.cpp commit X and configuration Y, these exact text-only Q4_K_M GGUF artifacts achieved the following native-token throughput, latency, and measured memory footprints.”
+
+You may compare:
+
+- Single-stream prefill and decode.
+- Throughput/latency at the same concurrency and sequence lengths.
+- Scaling curves and measured full-GPU feasibility.
+- Static VRAM, KV growth, workspace peaks, and the measured context × concurrency frontier.
+- Each model’s peak, provided you also show the shared feasible concurrency domain.
+
+Rerun the 4B baseline with the new llama.cpp binary. Its old-vs-new result is a regression bridge; historical numbers cannot appear as the direct baseline in the new headline chart.
+
+### Claims you must not make
+
+Do not claim:
+
+- “Iso-precision,” “equal 4-bit precision,” or equal retained quality. Say **matched nominal Q4_K_M tier**.
+- That one architecture is inherently faster or more memory-efficient. Results combine architecture, artifact recipe, kernels, tokenizer, batching, and runtime support.
+- That native tok/s represents equal text or useful work across tokenizers.
+- That a larger KV frontier means better context capability; attention semantics may differ.
+- Any accuracy, legal quality, multimodal, or universal performance ranking.
+- That Qwen performs 9.65B parameters of computation per token.
+- That Gemma is a “2B model,” uses 2B parameters per token, or should have 2B-class VRAM.
+
+Report Qwen as **~9.65B total parameters, MoE**. Report active parameters or routing topology only after authoritative/runtime verification. Active parameters do not determine resident expert memory.
+
+Report Gemma as **~5.1B total parameters, E2B designation (~2B “effective” as supplied)**. E2B/MatFormer/per-layer-embedding terminology does not establish what current llama.cpp executes or predict decode speed or VRAM; verify before interpreting it.
+
+### Quantization confound
+
+Reconciled approach:
+
+1. Use prebuilt GGUFs for bring-up.
+2. Preferred headline set: self-quantize all three from verified bf16 sources with one pinned converter/quantizer, identical Q4_K_M flags, and one recorded imatrix/calibration policy.
+3. Audit tensor types, exclusions, tensor bytes, and effective bytes/parameter. Identical commands still may not produce identical tensor treatment across architectures.
+4. If conversion support is unreliable, publish the prebuilt set as an **“available-artifact comparison”**. Do not imply controlled precision.
+5. Do not mix self-quantized and third-party artifacts in one controlled headline ranking.
+
+Use two workload views:
+
+- **Sequence-length controlled:** exactly 256 post-template native input tokens and 256 generated tokens.
+- **Application cross-check:** identical raw messages through each native template; report actual token counts, request latency, requests/s, and optionally output characters/bytes per second.
+
+Neither view controls both semantics and token count.
+
+## B. Must measure / must label
+
+### Provenance and execution
+
+- New llama.cpp commit, executable hash, compiler/CUDA versions, build flags.
+- Old and new 4B bridge result.
+- Exact GGUF repository revision, filename, SHA-256, file size, GGUF metadata, tensor-type histogram, and quantization logs where available.
+- Server and `llama-bench` flags: GPU layers, threads, context, batch/ubatch, KV dtype, flash attention, scheduler and prefix-cache settings.
+- GPU clocks/power state if controlled; host CPU utilization and thread settings, especially because the existing high-concurrency curve becomes host-bound.
+- Warm-up, repetitions, run ordering, and dispersion—not only the best run.
+
+### Placement and memory
+
+- Full-GPU versus CPU-offloaded tensors, including expert placement.
+- Load/static VRAM, host RAM, runtime/workspace peak, KV allocation, and first OOM/failing point.
+- Never silently reduce GPU layers, batch size, or other flags for one model.
+- Require successful completion, not merely server launch, when defining the frontier.
+
+### Performance
+
+- Separate prefill from batch-1 decode.
+- At every concurrency: native output tok/s, requests/s, TTFT p50/p95, inter-token or end-to-end latency, actual input/output lengths, failures, and OOMs.
+- Sweep requested C=1..100 until safe failure. Show:
+
+  - Comparisons at identical concurrency in the shared feasible domain.
+  - Each model’s independently labeled peak and maximum feasible point.
+
+### MoE-specific
+
+For Qwen, label or measure:
+
+- Total parameters and resident weight bytes.
+- Expert count, routing/top-k, and active-parameter estimate only if verified.
+- Actual/effective internal batch size, if exposed.
+- C=1 behavior and the complete concurrency curve.
+- GPU and host utilization.
+- Repeated runs over a fixed, diverse, unique prompt set.
+
+Larger batches may change routing diversity, locality, and scaling. If runtime batching/routing telemetry is unavailable, label it unavailable and do not attribute curve shape to MoE.
+
+### KV and tokenizer correctness
+
+- Runtime-verified layer count, KV heads, head dimension, attention modes, and sliding-window behavior; do not fill these from memory.
+- Theoretical KV bytes/token as a cross-check, plus empirical VRAM slope over context and live sequences.
+- Separate allocated KV from live/effective KV where exposed.
+- Empirically test whether any sliding-window implementation reduces or plateaus allocation.
+- Tokenizer revision, embedded chat template, BOS/EOS handling, and server-observed post-template counts.
+- Confirm no projector is loaded and no media inputs are used. Verify that text-only serving works without missing-projector or unsupported-tensor warnings.
+
+## C. Ranked risks and mitigations
+
+1. **Incomplete or incorrect new-architecture support.**  
+   Pin one tested master commit. Gate on clean loading, metadata parsing, reference-tokenizer parity, deterministic generation, exact lengths, and no unsupported/missing-tensor warnings. Otherwise report “unsupported at tested commit.”
+
+2. **Build drift invalidates the baseline.**  
+   Run all three on the same new binary; retain the old binary and use the 4B old/new bridge only to quantify drift.
+
+3. **Quant recipes masquerade as architecture differences.**  
+   Prefer the controlled self-quantized set. Otherwise downgrade to exact-artifact claims and publish the full quant audit.
+
+4. **Tokenizer/template mismatch invalidates 256-token fairness.**  
+   Count after template application using the server tokenizer; retain the identical-raw-message cross-check.
+
+5. **Silent CPU offload or 24 GB exhaustion.**  
+   Preflight load, short generation, then context/concurrency ramps. Inspect placement logs, VRAM, and host RAM. Mark failures rather than changing placement.
+
+6. **Unverified KV/sliding-window implementation behavior.**  
+   Measure allocation and decode behavior empirically. Do not infer a memory advantage from the architecture label.
+
+7. **MoE and host-side batching make curves workload-specific.**  
+   Use diverse unique prompts, repeat runs, expose actual batching where possible, and report latency alongside throughput.
+
+## D. Scope verdict
+
+Include:
+
+- Support/correctness gate.
+- Exact artifact and quantization provenance.
+- New-build rerun of all three plus the 4B build bridge.
+- Single-stream prefill/decode.
+- Concurrency scaling over the shared and per-model feasible domains.
+- Static memory, KV slope, and context × concurrency frontier.
+- Explicit MoE batch/concurrency behavior.
+- Text-only limitation.
+
+Cut:
+
+- Cross-model WikiText perplexity or a small “quality ranking.” Different tokenizers and model purposes make it misleading. Keep only a correctness smoke test. If quality matters, run a separate task-level legal/capability evaluation.
+- Multimodal benchmarking.
+- Generic decode-vs-depth from the initial release. Add it later only as a targeted attention-depth experiment after sliding-window behavior is verified.
+- vLLM 0.11.0. Do not attempt it. A newer-vLLM comparison should be a separate, version-pinned follow-up after official support for both architectures is verified.
+___CODEX_DONE___ exit=0

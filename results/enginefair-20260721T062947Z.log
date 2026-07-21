@@ -1,0 +1,21 @@
+### llama.cpp bf16 (-np 100 fixed, prefix-cache off) 06:29:53 ###
+[ext] llamacpp-bf16 C=1: 3679 tok/min (61.3 tok/s) ok=10 fail=0 ttft_p50=0.07299556897487491
+[ext] llamacpp-bf16 C=8: 22935 tok/min (382.2 tok/s) ok=80 fail=0 ttft_p50=0.407016240991652
+[ext] llamacpp-bf16 C=16: 22891 tok/min (381.5 tok/s) ok=160 fail=0 ttft_p50=0.6441294900141656
+[ext] llamacpp-bf16 C=32: 16083 tok/min (268.1 tok/s) ok=320 fail=0 ttft_p50=0.9030058520147577
+[ext] llamacpp-bf16 C=64: 25271 tok/min (421.2 tok/s) ok=640 fail=0 ttft_p50=0.9812753400765359
+### vLLM bf16 (paged KV, max-num-seqs 100, prefix-cache off) 06:48:08 ###
+[ext] vllm-bf16 C=1: 4073 tok/min (67.9 tok/s) ok=10 fail=0 ttft_p50=0.07542390306480229
+[ext] vllm-bf16 C=8: 28723 tok/min (478.7 tok/s) ok=80 fail=0 ttft_p50=0.18160160793922842
+[ext] vllm-bf16 C=16: 51200 tok/min (853.3 tok/s) ok=160 fail=0 ttft_p50=0.3024628290440887
+[ext] vllm-bf16 C=32: 77817 tok/min (1297.0 tok/s) ok=320 fail=0 ttft_p50=0.4230372180463746
+[ext] vllm-bf16 C=64: 105760 tok/min (1762.7 tok/s) ok=640 fail=0 ttft_p50=0.60254917293787
+ 935981scripts/engine_fair.sh: line 33: 935981 Killed                  setsid "$VLLM" serve "$MERGED" --served-model-name "$ALIAS" --host 127.0.0.1 --port "$PORT" --dtype bfloat16 --max-model-len 1024 --max-num-seqs 100 --gpu-memory-utilization 0.90 --no-enable-prefix-caching --disable-log-requests > "$RUN/server-vllm.log" 2>&1
+### SGLang bf16 (RadixAttention, prefix-cache off) 06:55:12 ###
+[ext] sglang-bf16 C=1: 2081 tok/min (34.7 tok/s) ok=10 fail=0 ttft_p50=0.07455362204927951
+[ext] sglang-bf16 C=8: 15486 tok/min (258.1 tok/s) ok=80 fail=0 ttft_p50=0.29249114997219294
+[ext] sglang-bf16 C=16: 29983 tok/min (499.7 tok/s) ok=160 fail=0 ttft_p50=0.37471274205017835
+[ext] sglang-bf16 C=32: 54045 tok/min (900.7 tok/s) ok=320 fail=0 ttft_p50=0.6421719960635528
+[ext] sglang-bf16 C=64: 98839 tok/min (1647.3 tok/s) ok=640 fail=0 ttft_p50=1.0590404579415917
+ 939520scripts/engine_fair.sh: line 33: 939520 Killed                  setsid "$SG" -m sglang.launch_server --model-path "$MERGED" --served-model-name "$ALIAS" --host 127.0.0.1 --port "$PORT" --dtype bfloat16 --context-length 1024 --max-running-requests 100 --disable-radix-cache --disable-cuda-graph > "$RUN/server-sglang.log" 2>&1
+### ENGINE-FAIR DONE (results/enginefair-20260721T062947Z) ###
