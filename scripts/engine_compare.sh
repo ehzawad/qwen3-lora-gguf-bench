@@ -42,16 +42,23 @@ wait_health(){ # $1=pid $2=timeout
   return 1
 }
 stop_group(){
-  local pid="${1:-}"
+  local pid="${1:-}" target=""
   [ -n "$pid" ] || return 0
-  if kill -0 "$pid" 2>/dev/null; then
-    kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+  # The session leader can exit before its worker children. Test the process
+  # group directly so cleanup still reaches those surviving descendants.
+  if kill -0 -- "-$pid" 2>/dev/null; then
+    target="-$pid"
+  elif kill -0 "$pid" 2>/dev/null; then
+    target="$pid"
+  fi
+  if [ -n "$target" ]; then
+    kill -TERM -- "$target" 2>/dev/null || true
     for _ in $(seq 1 20); do
-      kill -0 "$pid" 2>/dev/null || break
+      kill -0 -- "$target" 2>/dev/null || break
       sleep 1
     done
-    if kill -0 "$pid" 2>/dev/null; then
-      kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+    if kill -0 -- "$target" 2>/dev/null; then
+      kill -KILL -- "$target" 2>/dev/null || true
     fi
   fi
   wait "$pid" 2>/dev/null || true
