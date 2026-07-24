@@ -7,14 +7,20 @@ Reconciled with the codex council (merge-convert lens). Key decisions:
   * Keep the adapter in FP32; PEFT computes B@A in FP32 then casts the delta to
     the base BF16 dtype. safe_merge=True validates finiteness.
   * Tied embeddings: do NOT resize embeddings, do NOT synthesize lm_head.
-  * Prove the merge is real: adapter-on != adapter-off logits, and
-    merged logits ~= adapter-on logits (cosine > 0.999, same argmax).
+  * Prove the merge is real: adapter-on != adapter-off logits, and the merged
+    model remains closer to adapter-on than adapter-off with the same argmax.
 
 Usage: merge.py <base_dir> <adapter_dir> <out_dir>
 """
 import hashlib
 import sys
 from pathlib import Path
+
+if not __debug__:
+    raise RuntimeError(
+        "merge.py uses assertions as integrity gates; optimized Python disables "
+        "them. Rerun without -O and unset PYTHONOPTIMIZE."
+    )
 
 import torch
 import torch.nn.functional as F

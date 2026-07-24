@@ -27,7 +27,9 @@ preflight() {
   nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader -i 0
   python3 - <<'PY'
 import torch, transformers, peft
-assert torch.cuda.is_available(), "CUDA not available"
+
+if not torch.cuda.is_available():
+    raise RuntimeError("CUDA not available")
 print("torch", torch.__version__, "transformers", transformers.__version__, "peft", peft.__version__)
 PY
   df -h "$ROOT" | tail -1
@@ -35,21 +37,32 @@ PY
 
 benchmark() {
   local run="${1:-$ROOT/results/a5000-$(date -u +%Y%m%dT%H%M%SZ)}"
+  local failed=0
   mkdir -p "$run"
   python3 scripts/capture_env.py "$run/manifest.json"
   cp config/experiment.json "$run/experiment.json"
   # concurrency -> total ctx (768 tokens/slot, --no-kv-unified)
   for c in 1 30 100; do
     local ctx=$(( c * 768 ))
-    local tag=$(printf "c%03d" "$c")
+    local tag
+    tag=$(printf "c%03d" "$c")
     echo "== benchmark C=$c ctx=$ctx =="
-    python3 scripts/benchmark.py \
+    if ! python3 scripts/benchmark.py \
       --model "$MODEL_Q6" --bin-dir "$BIN" --prompts "$PROMPTS" \
       --concurrency "$c" --ctx "$ctx" --port "$PORT" \
-      --outdir "$run" --tag "$tag" --measured 20 --warmup 2 || true
+      --outdir "$run" --tag "$tag" --measured 20 --warmup 2; then
+      echo "== benchmark point FAILED: C=$c tag=$tag ==" >&2
+      failed=1
+    fi
   done
-  python3 scripts/report.py "$run"
+  if ! python3 scripts/report.py "$run"; then
+    failed=1
+  fi
   echo "== results in $run =="
+  if [ "$failed" -ne 0 ]; then
+    echo "== benchmark suite FAILED; partial artifacts remain in $run ==" >&2
+    return 2
+  fi
 }
 
 report() { python3 scripts/report.py "${1:?usage: run.sh report <run_dir>}"; }

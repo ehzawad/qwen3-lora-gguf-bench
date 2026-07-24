@@ -28,22 +28,69 @@ MEASURED="${MEASURED:-15}"; WARMUP="${WARMUP:-2}"
 RUN="${1:-$ROOT/results/enginefair-$(date -u +%Y%m%dT%H%M%SZ)}"
 WHICH="${2:-all}"
 mkdir -p "$RUN"
-python3 scripts/capture_env.py "$RUN/manifest.json" >/dev/null 2>&1 || true
+fail=0
+active_pid=""
+
+if ! python3 scripts/capture_env.py "$RUN/manifest.json" >/dev/null 2>&1; then
+  echo "### environment capture FAILED ###" >&2
+  fail=1
+fi
 
 free_port(){ fuser -k "${PORT}/tcp" 2>/dev/null || true; sleep 3; }
-wait_health(){ # $1=url $2=timeout
-  local t0=$SECONDS
-  while (( SECONDS-t0 < ${2:-600} )); do
+wait_health(){ # $1=pid $2=url $3=timeout
+  local pid="$1" url="$2" timeout="${3:-600}" t0=$SECONDS ep
+  while (( SECONDS-t0 < timeout )); do
+    kill -0 "$pid" 2>/dev/null || return 1
     for ep in /health /v1/models; do
-      curl -sf "$1$ep" >/dev/null 2>&1 && return 0
-    done; sleep 2
-  done; return 1
+      curl -sf "$url$ep" >/dev/null 2>&1 && return 0
+    done
+    sleep 2
+  done
+  return 1
 }
+stop_group(){
+  local pid="${1:-}" target=""
+  [ -n "$pid" ] || return 0
+  # The session leader can exit before its worker children. Test the process
+  # group directly so cleanup still reaches those surviving descendants.
+  if kill -0 -- "-$pid" 2>/dev/null; then
+    target="-$pid"
+  elif kill -0 "$pid" 2>/dev/null; then
+    target="$pid"
+  fi
+  if [ -n "$target" ]; then
+    kill -TERM -- "$target" 2>/dev/null || true
+    for _ in $(seq 1 20); do
+      kill -0 -- "$target" 2>/dev/null || break
+      sleep 1
+    done
+    if kill -0 -- "$target" 2>/dev/null; then
+      kill -KILL -- "$target" 2>/dev/null || true
+    fi
+  fi
+  wait "$pid" 2>/dev/null || true
+  [ "$active_pid" = "$pid" ] && active_pid=""
+}
+cleanup(){
+  stop_group "$active_pid"
+}
+on_signal(){
+  trap - EXIT INT TERM
+  cleanup
+  exit 130
+}
+trap cleanup EXIT
+trap on_signal INT TERM
+
 sweep(){ # $1=engine-tag
+  local engine="$1" c
   for c in $CLIENTS; do
-    python3 scripts/bench_external.py --url "http://127.0.0.1:$PORT" --engine "$1" \
-      --concurrency "$c" --outdir "$RUN" --tag "$1-c$(printf '%03d' "$c")" \
-      --measured "$MEASURED" --warmup "$WARMUP" || echo "### $1 c$c FAILED ###"
+    if ! python3 scripts/bench_external.py --url "http://127.0.0.1:$PORT" --engine "$engine" \
+      --concurrency "$c" --outdir "$RUN" --tag "$engine-c$(printf '%03d' "$c")" \
+      --measured "$MEASURED" --warmup "$WARMUP"; then
+      echo "### $engine c$c FAILED ###" >&2
+      fail=1
+    fi
   done
 }
 
@@ -56,35 +103,65 @@ run_llamacpp(){
     -ctk f16 -ctv f16 --cache-ram 0 --no-cache-prompt --no-context-shift \
     -rea off --jinja --no-webui --metrics --slots > "$RUN/server-llamacpp.log" 2>&1 &
   local pid=$!
-  if wait_health "http://127.0.0.1:$PORT" 300; then sweep "llamacpp-bf16"; else echo "### llamacpp never ready ###"; fi
-  kill "$pid" 2>/dev/null; free_port
+  active_pid="$pid"
+  if wait_health "$pid" "http://127.0.0.1:$PORT" 300; then
+    sweep "llamacpp-bf16"
+  else
+    echo "### llamacpp never ready (see server-llamacpp.log) ###" >&2
+    fail=1
+  fi
+  stop_group "$pid"
+  free_port
 }
 
 run_vllm(){
   echo "### vLLM bf16 (paged KV, max-num-seqs 100, prefix-cache off) $(date -u +%H:%M:%S) ###"
   free_port
+  if [ ! -x "$VLLM" ]; then
+    echo "### missing vLLM executable: $VLLM ###" >&2
+    fail=1
+    return
+  fi
   setsid "$VLLM" serve "$MERGED" --served-model-name "$ALIAS" \
     --host 127.0.0.1 --port "$PORT" --dtype bfloat16 \
     --max-model-len 1024 --max-num-seqs 100 --gpu-memory-utilization 0.90 \
     --no-enable-prefix-caching --disable-log-requests \
     > "$RUN/server-vllm.log" 2>&1 &
   local pid=$!
-  if wait_health "http://127.0.0.1:$PORT" 600; then sweep "vllm-bf16"; else echo "### vllm never ready (see server-vllm.log) ###"; fi
-  kill "$pid" 2>/dev/null; pkill -f "vllm serve" 2>/dev/null; free_port
+  active_pid="$pid"
+  if wait_health "$pid" "http://127.0.0.1:$PORT" 600; then
+    sweep "vllm-bf16"
+  else
+    echo "### vllm never ready (see server-vllm.log) ###" >&2
+    fail=1
+  fi
+  stop_group "$pid"
+  free_port
 }
 
 run_sglang(){
   echo "### SGLang bf16 (RadixAttention, prefix-cache off) $(date -u +%H:%M:%S) ###"
   free_port
-  local SG="$ROOT/.venv-sglang/bin/python"
-  [ -x "$SG" ] || { echo "### sglang venv absent, skip ###"; return; }
-  setsid "$SG" -m sglang.launch_server --model-path "$MERGED" --served-model-name "$ALIAS" \
+  local sg="$ROOT/.venv-sglang/bin/python"
+  if [ ! -x "$sg" ]; then
+    echo "### missing SGLang environment: $sg ###" >&2
+    fail=1
+    return
+  fi
+  setsid "$sg" -m sglang.launch_server --model-path "$MERGED" --served-model-name "$ALIAS" \
     --host 127.0.0.1 --port "$PORT" --dtype bfloat16 --context-length 1024 \
     --max-running-requests 100 --disable-radix-cache --disable-cuda-graph \
     > "$RUN/server-sglang.log" 2>&1 &
   local pid=$!
-  if wait_health "http://127.0.0.1:$PORT" 600; then sweep "sglang-bf16"; else echo "### sglang never ready ###"; fi
-  kill "$pid" 2>/dev/null; pkill -f "sglang.launch_server" 2>/dev/null; free_port
+  active_pid="$pid"
+  if wait_health "$pid" "http://127.0.0.1:$PORT" 600; then
+    sweep "sglang-bf16"
+  else
+    echo "### sglang never ready (see server-sglang.log) ###" >&2
+    fail=1
+  fi
+  stop_group "$pid"
+  free_port
 }
 
 case "$WHICH" in
@@ -92,5 +169,8 @@ case "$WHICH" in
   vllm) run_vllm;;
   sglang) run_sglang;;
   all) run_llamacpp; run_vllm; run_sglang;;
+  *) echo "usage: $0 [run_dir] {llamacpp|vllm|sglang|all}" >&2; exit 2;;
 esac
-echo "### ENGINE-FAIR DONE ($RUN) ###"
+
+echo "### ENGINE-FAIR DONE ($RUN) fail=$fail ###"
+exit "$fail"

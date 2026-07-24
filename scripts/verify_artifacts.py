@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Verify both GGUFs without loading model tensors (council merge-convert lens).
+"""Verify both GGUFs without loading model tensors (merge-convert lens).
 
 Usage: verify_artifacts.py <llama_dir> <bf16_gguf> <q6_gguf>
 """
 import hashlib
 import sys
+
+if not __debug__:
+    raise RuntimeError(
+        "verify_artifacts.py uses assertions as integrity gates; optimized Python "
+        "disables them. Rerun without -O and unset PYTHONOPTIMIZE."
+    )
 
 llama_dir, bf16_path, q6_path = sys.argv[1:4]
 sys.path.insert(0, f"{llama_dir}/gguf-py")
