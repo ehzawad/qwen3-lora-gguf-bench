@@ -397,6 +397,54 @@ exit 0
                 )
                 self.assertEqual(status["status"], "benchmark_failed")
 
+    def test_stop_group_kills_workers_after_session_leader_exits(self) -> None:
+        real_bash = shutil.which("bash")
+        real_setsid = shutil.which("setsid")
+        real_sleep = shutil.which("sleep")
+        if not real_bash or not real_setsid or not real_sleep:
+            self.skipTest("requires bash, setsid, and sleep")
+
+        for name in ("engine_fair.sh", "engine_compare.sh", "model_serve_bench.sh"):
+            with self.subTest(script=name), tempfile.TemporaryDirectory() as tmp:
+                text = (SCRIPTS / name).read_text(encoding="utf-8")
+                start = text.index("stop_group(){")
+                end = text.index("\n}\n", start) + 3
+                function = text[start:end]
+                root = Path(tmp)
+                pidfile = root / "worker.pid"
+                probe = root / "probe.sh"
+                probe.write_text(
+                    f'''#!/usr/bin/env bash
+set -uo pipefail
+active_pid=""
+{function}
+"$2" "$1" -c '"$1" 300 & echo $! > "$2"' bash "$3" "$4" &
+leader=$!
+wait "$leader" 2>/dev/null || true
+worker=$(cat "$4")
+stop_group "$leader"
+for _ in $(seq 1 200); do
+  state=$(ps -o stat= -p "$worker" 2>/dev/null | xargs || true)
+  case "$state" in
+    ""|Z*) exit 0 ;;
+  esac
+  "$3" 0.01
+done
+kill -KILL "$worker" 2>/dev/null || true
+exit 1
+''',
+                    encoding="utf-8",
+                )
+                completed = run(
+                    real_bash,
+                    str(probe),
+                    real_bash,
+                    real_setsid,
+                    real_sleep,
+                    str(pidfile),
+                )
+                self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+
     def test_engine_wrappers_use_scoped_cleanup_and_failure_exit(self) -> None:
         for name in ("engine_fair.sh", "engine_compare.sh", "model_serve_bench.sh"):
             with self.subTest(script=name):
