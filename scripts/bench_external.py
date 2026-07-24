@@ -28,7 +28,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from benchmark import Telemetry, get_metrics, gpu_mem_used  # noqa: E402
 
 
-BENCH_VERSION = "1.1"
+BENCH_VERSION = "1.2"
+GENERATION_COUNTERS = (
+    "vllm:generation_tokens_total",
+    "sglang:generation_tokens_total",
+    "llamacpp:tokens_predicted_total",
+    "llamacpp:n_tokens_predicted_total",
+)
 
 
 def do_request(base: str, prompt: str, max_tokens: int = 256) -> dict[str, Any]:
@@ -179,6 +185,29 @@ def percentile(values: list[float], p: float) -> float | None:
     return ordered[min(len(ordered) - 1, int(p * len(ordered)))] if ordered else None
 
 
+def prometheus_metric_total(metrics: dict[str, float], name: str) -> float | None:
+    """Sum one Prometheus metric family across exact and labelled samples."""
+    values = [
+        value
+        for key, value in metrics.items()
+        if key == name or key.startswith(f"{name}{{")
+    ]
+    return sum(values) if values else None
+
+
+def generation_counter_delta(
+    before: dict[str, float],
+    after: dict[str, float],
+) -> tuple[float | None, str | None]:
+    """Return the first available engine generation-counter delta and its name."""
+    for name in GENERATION_COUNTERS:
+        before_total = prometheus_metric_total(before, name)
+        after_total = prometheus_metric_total(after, name)
+        if before_total is not None and after_total is not None:
+            return after_total - before_total, name
+    return None, None
+
+
 def counter_matches(client_tokens: int, server_tokens: float | None) -> bool | None:
     if server_tokens is None:
         return None
@@ -311,15 +340,9 @@ def main(argv: list[str] | None = None) -> int:
         ttfts = [record["ttft"] for record in ok_records if record["ttft"] is not None]
         latencies = [record["latency"] for record in ok_records]
 
-        server_generated = None
-        for key in (
-            "vllm:generation_tokens_total",
-            "llamacpp:tokens_predicted_total",
-            "llamacpp:n_tokens_predicted_total",
-        ):
-            if key in metrics_after and key in metrics_before:
-                server_generated = metrics_after[key] - metrics_before[key]
-                break
+        server_generated, server_metric = generation_counter_delta(
+            metrics_before, metrics_after
+        )
         counters_match = counter_matches(completion_tokens, server_generated)
         run_ok = successful_run(
             len(ok_records), len(bad_records), expected_measured, counters_match
@@ -334,6 +357,7 @@ def main(argv: list[str] | None = None) -> int:
             "output_tokens_per_s": output_tps,
             "output_tokens_per_min": output_tps * 60,
             "server_generated_tokens_delta": server_generated,
+            "server_generated_tokens_metric": server_metric,
             "server_counter_matches_client": counters_match,
             "prompt_tokens_example": ok_records[0]["prompt_tokens"] if ok_records else None,
             "ttft_s": {
