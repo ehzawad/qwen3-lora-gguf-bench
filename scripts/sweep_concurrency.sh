@@ -15,6 +15,17 @@ PROMPTS="$ROOT/prompts/short-chat.jsonl"
 RUN="${1:-$ROOT/results/sweep-$(date -u +%Y%m%dT%H%M%SZ)}"
 mkdir -p "$RUN"
 python3 scripts/capture_env.py "$RUN/manifest.json" >/dev/null
+cat > "$RUN/experiment.json" <<'JSON'
+{
+  "benchmark": {
+    "concurrency_points": [1, 2, 4, 8, 16, 24, 32, 48, 64, 96, 128],
+    "expected_tags": [
+      "c001", "c002", "c004", "c008", "c016", "c024",
+      "c032", "c048", "c064", "c096", "c128", "c032b"
+    ]
+  }
+}
+JSON
 
 # more samples at low C (cheap) for credible percentiles; fewer at high C
 meas_for() { local c=$1
