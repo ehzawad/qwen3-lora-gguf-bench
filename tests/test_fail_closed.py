@@ -176,6 +176,26 @@ class ExternalHarnessTests(unittest.TestCase):
         self.assertFalse(bench_external.successful_run(19, 1, 20, True))
         self.assertFalse(bench_external.successful_run(20, 0, 20, False))
 
+    def test_labelled_prometheus_generation_counters_are_aggregated(self) -> None:
+        before = {
+            'vllm:generation_tokens_total{model_name="a"}': 10.0,
+            'vllm:generation_tokens_total{model_name="b"}': 5.0,
+        }
+        after = {
+            'vllm:generation_tokens_total{model_name="a"}': 16.0,
+            'vllm:generation_tokens_total{model_name="b"}': 7.0,
+        }
+        delta, metric = bench_external.generation_counter_delta(before, after)
+        self.assertEqual(delta, 8.0)
+        self.assertEqual(metric, "vllm:generation_tokens_total")
+
+        sglang_delta, sglang_metric = bench_external.generation_counter_delta(
+            {"sglang:generation_tokens_total{model_name=\"m\"}": 3.0},
+            {"sglang:generation_tokens_total{model_name=\"m\"}": 9.0},
+        )
+        self.assertEqual(sglang_delta, 6.0)
+        self.assertEqual(sglang_metric, "sglang:generation_tokens_total")
+
     def test_empty_prompt_corpus_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "empty.jsonl"
