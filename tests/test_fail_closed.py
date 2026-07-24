@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -265,7 +266,7 @@ exit 0
             "setsid": (
                 "#!/usr/bin/env bash\n"
                 "echo \"setsid $*\" >> \"$FAKE_CALL_LOG\"\n"
-                "exec /usr/bin/setsid /usr/bin/sleep 300\n"
+                "exec \"$REAL_SETSID\" \"$REAL_SLEEP\" 300\n"
             ),
         }.items():
             tool = fake_bin / name
@@ -278,6 +279,12 @@ exit 0
         env = dict(os.environ)
         env["PATH"] = f"{fake_bin}:{env['PATH']}"
         env["FAKE_CALL_LOG"] = str(log)
+        real_setsid = shutil.which("setsid")
+        real_sleep = shutil.which("sleep")
+        if not real_setsid or not real_sleep:
+            raise RuntimeError("tests require setsid and sleep")
+        env["REAL_SETSID"] = real_setsid
+        env["REAL_SLEEP"] = real_sleep
         return env
 
     def test_top_level_benchmark_continues_but_returns_failure(self) -> None:
