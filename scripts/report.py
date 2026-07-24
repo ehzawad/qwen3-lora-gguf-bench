@@ -57,25 +57,33 @@ def load_rows(run_dir: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def expected_concurrency(run_dir: Path) -> set[int]:
+def expected_run_spec(run_dir: Path) -> tuple[set[int], set[str]]:
     path = run_dir / "experiment.json"
     if not path.exists():
-        return set()
+        return set(), set()
     try:
         with path.open(encoding="utf-8") as f:
             experiment = json.load(f)
     except (OSError, json.JSONDecodeError) as exc:
         raise ReportError(f"cannot read {path}: {exc}") from exc
 
-    points = g(experiment, "benchmark", "concurrency_points")
-    if points is None:
-        return set()
+    benchmark = g(experiment, "benchmark", default={})
+    if not isinstance(benchmark, dict):
+        raise ReportError(f"{path}: benchmark must be an object")
+
+    points = benchmark.get("concurrency_points", [])
     if not isinstance(points, list) or not all(
         isinstance(point, int) and not isinstance(point, bool) and point > 0
         for point in points
     ):
         raise ReportError(f"{path}: benchmark.concurrency_points must be positive integers")
-    return set(points)
+
+    tags = benchmark.get("expected_tags", [])
+    if not isinstance(tags, list) or not all(
+        isinstance(tag, str) and tag for tag in tags
+    ):
+        raise ReportError(f"{path}: benchmark.expected_tags must be non-empty strings")
+    return set(points), set(tags)
 
 
 def expected_request_count(row: dict[str, Any]) -> int | None:
@@ -130,6 +138,7 @@ def build_report(
     run_dir: Path,
     rows: list[dict[str, Any]],
     expected_points: set[int],
+    expected_tags: set[str],
 ) -> tuple[str, list[dict[str, Any]], bool]:
     validated = [(row, *validate_row(row)) for row in rows]
     observed_points = {
@@ -138,8 +147,18 @@ def build_report(
         if isinstance(row.get("concurrency"), int)
         and not isinstance(row.get("concurrency"), bool)
     }
+    observed_tags = {
+        row["tag"]
+        for row, _ok, _reasons in validated
+        if isinstance(row.get("tag"), str) and row.get("tag")
+    }
     missing_points = sorted(expected_points - observed_points)
-    run_ok = all(ok for _row, ok, _reasons in validated) and not missing_points
+    missing_tags = sorted(expected_tags - observed_tags)
+    run_ok = (
+        all(ok for _row, ok, _reasons in validated)
+        and not missing_points
+        and not missing_tags
+    )
 
     lines: list[str] = []
     lines.append("# Concurrency benchmark summary\n")
@@ -148,6 +167,12 @@ def build_report(
         lines.append(
             "Missing expected concurrency point(s): "
             + ", ".join(str(point) for point in missing_points)
+            + ".\n"
+        )
+    if missing_tags:
+        lines.append(
+            "Missing expected benchmark tag(s): "
+            + ", ".join(f"`{tag}`" for tag in missing_tags)
             + ".\n"
         )
     failed_files = [row["_source_file"] for row, ok, _reasons in validated if not ok]
@@ -235,8 +260,8 @@ def main(argv: list[str] | None = None) -> int:
         if not run_dir.is_dir():
             raise ReportError(f"run directory does not exist: {run_dir}")
         rows = load_rows(run_dir)
-        points = expected_concurrency(run_dir)
-        markdown, summary, run_ok = build_report(run_dir, rows, points)
+        points, tags = expected_run_spec(run_dir)
+        markdown, summary, run_ok = build_report(run_dir, rows, points, tags)
     except ReportError as exc:
         print(f"[report] ERROR: {exc}", file=sys.stderr)
         return 2
