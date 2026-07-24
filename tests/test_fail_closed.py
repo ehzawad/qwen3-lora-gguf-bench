@@ -132,7 +132,12 @@ class ReportTests(unittest.TestCase):
                 json.dumps(valid_row()), encoding="utf-8"
             )
             (run_dir / "experiment.json").write_text(
-                json.dumps({"benchmark": {"concurrency_points": [1, 30]}}),
+                json.dumps({
+                    "benchmark": {
+                        "concurrency_points": [1, 30],
+                        "expected_tags": ["c001", "c030"],
+                    }
+                }),
                 encoding="utf-8",
             )
 
@@ -140,6 +145,7 @@ class ReportTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 2)
             markdown = (run_dir / "summary.md").read_text(encoding="utf-8")
             self.assertIn("Missing expected concurrency point(s): 30", markdown)
+            self.assertIn("Missing expected benchmark tag(s): `c030`", markdown)
 
 
 class ExternalHarnessTests(unittest.TestCase):
@@ -227,6 +233,7 @@ class ShellOrchestratorTests(unittest.TestCase):
         fake_bin = root / "fake-bin"
         fake_bin.mkdir()
         log = root / "calls.log"
+
         python = fake_bin / "python3"
         python.write_text(
             """#!/usr/bin/env bash
@@ -238,14 +245,33 @@ fi
 if [[ "$*" == *"scripts/benchmark.py"* && "$*" == *"--tag c024"* ]]; then
   exit 2
 fi
+if [[ "$*" == *"scripts/bench_external.py"* && "$*" == *"-c016"* ]]; then
+  exit 2
+fi
 exit 0
 """,
             encoding="utf-8",
         )
         python.chmod(0o755)
+
         nvidia_smi = fake_bin / "nvidia-smi"
         nvidia_smi.write_text("#!/usr/bin/env bash\necho 0\n", encoding="utf-8")
         nvidia_smi.chmod(0o755)
+
+        for name, body in {
+            "curl": "#!/usr/bin/env bash\nexit 0\n",
+            "fuser": "#!/usr/bin/env bash\nexit 0\n",
+            "sleep": "#!/usr/bin/env bash\nexit 0\n",
+            "setsid": (
+                "#!/usr/bin/env bash\n"
+                "echo \"setsid $*\" >> \"$FAKE_CALL_LOG\"\n"
+                "exec /usr/bin/setsid /usr/bin/sleep 300\n"
+            ),
+        }.items():
+            tool = fake_bin / name
+            tool.write_text(body, encoding="utf-8")
+            tool.chmod(0o755)
+
         return fake_bin, log
 
     def fake_env(self, fake_bin: Path, log: Path) -> dict[str, str]:
@@ -293,12 +319,75 @@ exit 0
             self.assertIn("--tag c032b", calls)
             self.assertIn("scripts/report.py", calls)
 
+    def test_engine_fair_propagates_client_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin, log = self.make_fake_tools(root)
+            output = root / "engine-fair"
+            env = self.fake_env(fake_bin, log)
+            env.update({"CLIENTS": "1 8 16", "MEASURED": "1", "WARMUP": "0"})
+            completed = run(
+                "bash",
+                "scripts/engine_fair.sh",
+                str(output),
+                "llamacpp",
+                cwd=REPO,
+                env=env,
+            )
+            self.assertEqual(completed.returncode, 1, completed.stdout + completed.stderr)
+            calls = log.read_text(encoding="utf-8")
+            self.assertIn("--tag llamacpp-bf16-c001", calls)
+            self.assertIn("--tag llamacpp-bf16-c008", calls)
+            self.assertIn("--tag llamacpp-bf16-c016", calls)
+
+    def test_model_scale_marks_partial_models_and_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin, log = self.make_fake_tools(root)
+            output = root / "model-scale"
+            env = self.fake_env(fake_bin, log)
+            env.update({
+                "CLIENTS": "1 16",
+                "MEASURED": "1",
+                "WARMUP": "0",
+                "NP": "1",
+                "SLOTCTX": "64",
+            })
+            completed = run(
+                "bash",
+                "scripts/model_serve_bench.sh",
+                str(output),
+                cwd=REPO,
+                env=env,
+            )
+            self.assertEqual(completed.returncode, 1, completed.stdout + completed.stderr)
+            calls = log.read_text(encoding="utf-8")
+            for model in ("qwen3-4b", "qwen3.5-9b", "gemma-4-e2b"):
+                self.assertIn(f"--tag {model}-c001", calls)
+                self.assertIn(f"--tag {model}-c016", calls)
+                status = json.loads(
+                    (output / f"status-{model}.json").read_text(encoding="utf-8")
+                )
+                self.assertEqual(status["status"], "benchmark_failed")
+
+    def test_engine_wrappers_use_scoped_cleanup_and_failure_exit(self) -> None:
+        for name in ("engine_fair.sh", "engine_compare.sh", "model_serve_bench.sh"):
+            with self.subTest(script=name):
+                text = (SCRIPTS / name).read_text(encoding="utf-8")
+                self.assertNotIn("pkill -f", text)
+                self.assertIn('exit "$fail"', text)
+                self.assertIn("if ! python3 scripts/bench_external.py", text)
+                self.assertIn("stop_group", text)
+
     def test_shell_syntax(self) -> None:
         completed = run(
             "bash",
             "-n",
             "run.sh",
             "scripts/sweep_concurrency.sh",
+            "scripts/engine_fair.sh",
+            "scripts/engine_compare.sh",
+            "scripts/model_serve_bench.sh",
             cwd=REPO,
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
