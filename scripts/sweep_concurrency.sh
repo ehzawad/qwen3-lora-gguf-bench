@@ -41,5 +41,8 @@ run_point() {
 for c in 1 2 4 8 16 24 32 48 64 96 128; do run_point "$c" "$(printf 'c%03d' "$c")"; done
 run_point 32 c032b     # anchor repeat: detect thermal / host-load drift
 
-python3 scripts/report.py "$RUN"
+if ! python3 scripts/report.py "$RUN"; then
+  fail=1
+fi
 echo "### SWEEP DONE ($RUN) fail=$fail ###"
+exit "$fail"
